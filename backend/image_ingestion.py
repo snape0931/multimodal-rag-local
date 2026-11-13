@@ -1,25 +1,43 @@
+import io
+
 import ollama
 from PIL import Image
 
 from backend.retrieval import model, image_collection
 from image_extractor import extract_images
 
+VISION_MODEL = "llava:7b"        # "moondream" is much faster on CPU (ollama pull moondream)
+MIN_SIZE = 200                   # px: skip icons and decorative fragments
+MAX_IMAGES = 8                   # max images described per PDF
+MAX_SIDE = 768                   # shrink images before sending them to the model
+MAX_DESCRIPTION_TOKENS = 120     # short descriptions = much faster
 
-MIN_SIZE = 200        # px: skip icons, logos and decorative fragments
-MAX_IMAGES = 15       # max images described per PDF
-VISION_MODEL = "llava:7b"
+PROMPT = (
+    "In 2-3 short sentences, describe this image. Say what kind of figure it is "
+    "(diagram, chart, table or photo) and include any readable labels or text."
+)
 
 
-def get_image_area(image_path):
-    """Return width * height, or 0 if the image can't be opened."""
+def image_area(path):
+    """Width * height, or 0 if the image is too small or unreadable."""
     try:
-        with Image.open(image_path) as img:
+        with Image.open(path) as img:
             width, height = img.size
         if width < MIN_SIZE or height < MIN_SIZE:
             return 0
         return width * height
     except Exception:
         return 0
+
+
+def to_small_jpeg(path):
+    """Return the image as a downscaled JPEG (bytes)."""
+    with Image.open(path) as img:
+        img = img.convert("RGB")
+        img.thumbnail((MAX_SIDE, MAX_SIDE))
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        return buffer.getvalue()
 
 
 def ingest_pdf_images(pdf_path):
@@ -37,23 +55,19 @@ def ingest_pdf_images(pdf_path):
 
     total_found = len(extracted_images)
 
-    # Keep only reasonably large images, biggest first, capped at MAX_IMAGES
-    sized = [(get_image_area(img["path"]), img) for img in extracted_images]
+    # Keep the biggest images, capped at MAX_IMAGES
+    sized = [(image_area(img["path"]), img) for img in extracted_images]
     sized = [(area, img) for area, img in sized if area > 0]
     sized.sort(key=lambda pair: pair[0], reverse=True)
     selected = [img for _, img in sized[:MAX_IMAGES]]
 
-    print(
-        f"Images extracted: {total_found} | "
-        f"after filtering: {len(selected)}"
-    )
+    print(f"Images extracted: {total_found} | to describe: {len(selected)}")
 
     indexed = 0
 
     for image in selected:
 
         filename = image["filename"]
-        image_path = image["path"]
         image_id = f"image_{filename}"
 
         # Skip images that were already described and stored
@@ -70,32 +84,33 @@ def ingest_pdf_images(pdf_path):
         try:
             response = ollama.chat(
                 model=VISION_MODEL,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "Describe this image in detail. "
-                            "Identify diagrams, charts, labels, "
-                            "important objects and visible text."
-                        ),
-                        "images": [image_path]
-                    }
-                ]
+                messages=[{
+                    "role": "user",
+                    "content": PROMPT,
+                    "images": [to_small_jpeg(image["path"])],
+                }],
+                keep_alive="2m",
+                options={
+                    "num_predict": MAX_DESCRIPTION_TOKENS,
+                    "temperature": 0.2,
+                },
             )
 
-            description = response["message"]["content"]
+            description = response["message"]["content"].strip()
 
-            if not description.strip():
+            if not description:
                 continue
 
+            text = f"Figure on page {image['page']}: {description}"
+
             embedding = model.encode(
-                [description],
+                [text],
                 show_progress_bar=False
             ).tolist()
 
             # Save each image right away so a later failure loses nothing
             image_collection.upsert(
-                documents=[description],
+                documents=[text],
                 embeddings=embedding,
                 metadatas=[{
                     "source": image["source"],
@@ -111,6 +126,12 @@ def ingest_pdf_images(pdf_path):
         except Exception as e:
             print(f"Skipping {filename}: {e}")
             continue
+
+    # Unload the vision model so it doesn't compete with the answer model
+    try:
+        ollama.generate(model=VISION_MODEL, prompt="", keep_alive=0)
+    except Exception:
+        pass
 
     return {
         "status": "completed",

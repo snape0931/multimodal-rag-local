@@ -1,0 +1,428 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniDoc AI | Document Intelligence</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+<div class="app-container">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="logo">
+            <div class="logo-icon">✳</div>
+            <div>
+                <h2>OmniDoc<span> AI</span></h2>
+                <small>INTELLIGENCE PLATFORM</small>
+            </div>
+        </div>
+
+        <div class="sidebar-label">WORKSPACE</div>
+
+        <button class="nav-btn active" id="dashboardBtn">
+            <span class="nav-icon">▦</span>
+            Documents
+            <span class="nav-arrow">›</span>
+        </button>
+
+        <button class="nav-btn" id="chatBtn">
+            <span class="nav-icon">✧</span>
+            Ask AI
+            <span class="nav-arrow">›</span>
+        </button>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="sidebar-label">SYSTEM</div>
+
+        <div class="system-card">
+            <div class="system-top">
+                <span class="status-dot"></span>
+                <span>Local AI Engine</span>
+                <span class="online-label">ONLINE</span>
+            </div>
+
+            <p>Powered by Ollama</p>
+
+            <div class="system-line">
+                <span></span>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="footer-avatar">OD</div>
+            <div>
+                <strong>OmniDoc Workspace</strong>
+                <small>Private · Local environment</small>
+            </div>
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+        <!-- TOPBAR -->
+        <header class="topbar">
+
+            <div class="breadcrumb">
+                <span>Workspace</span>
+                <span class="breadcrumb-separator">/</span>
+                <strong>Document Intelligence</strong>
+            </div>
+
+            <div class="topbar-right">
+
+                <div class="connection-status">
+                    <span class="status-dot"></span>
+                    API Connected
+                </div>
+
+                <!-- THEME TOGGLE -->
+                <button
+                    id="themeToggle"
+                    class="theme-toggle"
+                    type="button"
+                    title="Switch theme"
+                    aria-label="Switch theme"
+                >
+                    <span id="themeIcon">☀</span>
+                    <span id="themeText">Light mode</span>
+                </button>
+
+                <div class="user-avatar">AI</div>
+
+            </div>
+
+        </header>
+
+
+        <!-- DASHBOARD -->
+        <section id="dashboardSection">
+
+            <!-- HERO -->
+            <div class="hero-section">
+
+                <div class="hero-content">
+
+                    <div class="eyebrow">
+                        <span>✦</span>
+                        YOUR AI KNOWLEDGE HUB
+                    </div>
+
+                    <h1>
+                        Knowledge,
+                        <span>without limits.</span>
+                    </h1>
+
+                    <p>
+                        Transform static documents into an intelligent
+                        knowledge base. Upload, explore and ask anything.
+                    </p>
+
+                    <button
+                        class="hero-btn"
+                        id="chatBtnHero"
+                        type="button"
+                    >
+                        Start asking <span>↗</span>
+                    </button>
+
+                </div>
+
+                <div class="hero-visual">
+
+                    <div class="orbit orbit-one"></div>
+                    <div class="orbit orbit-two"></div>
+
+                    <div class="orbit-core">
+                        <span>✳</span>
+                    </div>
+
+                    <div class="orbit-tag tag-one">PDF</div>
+                    <div class="orbit-tag tag-two">AI</div>
+                    <div class="orbit-tag tag-three">RAG</div>
+
+                </div>
+
+            </div>
+
+
+            <!-- STATS -->
+            <div class="stats-grid">
+
+                <div class="stat-card">
+
+                    <div class="stat-top">
+                        <span>Total Documents</span>
+                        <div class="stat-icon purple">▤</div>
+                    </div>
+
+                    <h2 id="documentCount">0</h2>
+
+                    <p>PDFs in your knowledge base</p>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-top">
+                        <span>AI Engine</span>
+                        <div class="stat-icon blue">✧</div>
+                    </div>
+
+                    <h2>Ollama</h2>
+
+                    <p>Locally hosted language models</p>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div class="stat-top">
+                        <span>Retrieval System</span>
+                        <div class="stat-icon green">⌘</div>
+                    </div>
+
+                    <h2>Multimodal RAG</h2>
+
+                    <p>Text · Tables · Images</p>
+
+                </div>
+
+            </div>
+
+
+            <!-- UPLOAD SECTION -->
+            <div class="section-heading upload-heading">
+
+                <div>
+                    <div class="eyebrow">GET STARTED</div>
+
+                    <h2>Add to your knowledge base</h2>
+
+                    <p>
+                        Upload a PDF and let OmniDoc AI understand it.
+                    </p>
+                </div>
+
+            </div>
+
+
+            <div class="upload-card">
+
+                <div class="upload-graphic">
+                    <div class="upload-file-icon">PDF</div>
+                    <div class="upload-plus">+</div>
+                </div>
+
+                <h2>Bring your documents to life.</h2>
+
+                <p>
+                    Choose a PDF to extract text, tables and visual information.
+                </p>
+
+                <input
+                    type="file"
+                    id="pdfInput"
+                    accept=".pdf,application/pdf"
+                    hidden
+                >
+
+                <button
+                    class="primary-btn"
+                    id="uploadBtn"
+                    type="button"
+                >
+                    <span>↑</span> Choose PDF
+                </button>
+
+                <div class="upload-caption">
+                    <span>PDF FILES ONLY</span>
+                    <span>·</span>
+                    <span>PROCESSED LOCALLY</span>
+                </div>
+
+                <p id="uploadStatus" class="status-message"></p>
+
+            </div>
+
+
+            <!-- DOCUMENT LIBRARY -->
+            <div class="documents-section">
+
+                <div class="section-heading">
+
+                    <div>
+                        <div class="eyebrow">YOUR LIBRARY</div>
+
+                        <h2>Your Documents</h2>
+
+                        <p>
+                            Access and manage your indexed files.
+                        </p>
+                    </div>
+
+                    <button
+                        class="secondary-btn"
+                        id="refreshBtn"
+                        type="button"
+                    >
+                        ↻ Refresh
+                    </button>
+
+                </div>
+
+                <div id="documentList" class="document-list">
+
+                    <p class="empty-message">
+                        Loading documents...
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- CHAT SECTION -->
+        <section id="chatSection" class="hidden">
+
+            <div class="chat-heading">
+
+                <div class="eyebrow">
+                    INTELLIGENT DOCUMENT SEARCH
+                </div>
+
+                <h1>
+                    Ask <span>anything.</span>
+                </h1>
+
+                <p>
+                    Your documents hold the answers. Let's find them.
+                </p>
+
+            </div>
+
+
+            <div class="chat-workspace">
+
+                <!-- CHAT TOOLBAR -->
+                <div class="chat-toolbar">
+
+                    <div class="chat-toolbar-label">
+                        <span class="status-dot"></span>
+                        DOCUMENT CONTEXT
+                    </div>
+
+                    <div class="chat-controls">
+
+                        <label for="documentSelect">SOURCE</label>
+
+                        <select id="documentSelect">
+                            <option value="">All documents</option>
+                        </select>
+
+                    </div>
+
+                </div>
+
+
+                <!-- CHAT MESSAGES -->
+                <div id="chatMessages" class="chat-messages">
+
+                    <div class="welcome-message">
+
+                        <div class="welcome-ai-icon">✳</div>
+
+                        <div class="welcome-eyebrow">
+                            OMNIDOC AI ASSISTANT
+                        </div>
+
+                        <h3>
+                            What would you like to know?
+                        </h3>
+
+                        <p>
+                            Ask a question about your PDFs. I'll search
+                            across text, tables and image descriptions.
+                        </p>
+
+                        <div class="suggestion-pills">
+                            <span>Summarize this document</span>
+                            <span>Find important concepts</span>
+                            <span>Explain a diagram</span>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- CHAT INPUT -->
+                <div class="chat-input-area">
+
+                    <textarea
+                        id="questionInput"
+                        placeholder="Ask a question about your documents..."
+                        rows="2"
+                    ></textarea>
+
+                    <div class="chat-input-bottom">
+
+                        <span>
+                            ✦ AI-generated answers may need verification.
+                        </span>
+
+                        <button
+                            class="primary-btn"
+                            id="askBtn"
+                            type="button"
+                        >
+                            Ask AI <span>↑</span>
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- CHAT DISCLAIMER -->
+            <div class="chat-disclaimer">
+
+                <span class="status-dot"></span>
+
+                Your documents are processed using your local AI environment.
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+
+<!-- JAVASCRIPT -->
+<script src="script.js"></script>
+
+</body>
+</html>

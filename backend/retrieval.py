@@ -1,66 +1,67 @@
-
 import chromadb
 from sentence_transformers import SentenceTransformer, CrossEncoder
 
-print("Loading embedding model...")
+# Chunks scoring below MIN_SCORE are treated as irrelevant. If nothing passes,
+# the API replies "not found" without even calling the language model.
+# ms-marco scores are logits: relevant is usually above 0, unrelated is very negative.
+MIN_SCORE = -4.0
+TOP_K_FINAL = 4          # chunks sent to the language model (fewer = faster)
+DEBUG_SCORES = True
 
-# 1. Embedding model
+print("Loading embedding model...")
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# 2. Cross-encoder reranking model
 print("Loading reranking model...")
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-reranker = CrossEncoder(
-    "cross-encoder/ms-marco-MiniLM-L-6-v2"
-)
-
-# 3. Connect to ChromaDB
 client = chromadb.PersistentClient(path="./vectorstore")
 
-text_collection = client.get_collection("documents")
-table_collection = client.get_collection("tables")
-image_collection = client.get_collection("images")
+text_collection = client.get_or_create_collection("documents")
+table_collection = client.get_or_create_collection("tables")
+image_collection = client.get_or_create_collection("images")
+
+
+def warm_up_retrieval():
+    """Run the models once at startup so the first question isn't slow."""
+    try:
+        model.encode("warm up")
+        reranker.predict([("warm up", "warm up")])
+        print("Retrieval models warmed up.")
+    except Exception as e:
+        print(f"Retrieval warm-up skipped: {e}")
 
 
 def retrieve_context(question, document=None):
 
-    # 4. Generate query embedding
     query_embedding = model.encode(question).tolist()
+    where = {"source": document} if document else None
 
     candidates = []
 
-    # 5. Retrieve candidates from all three collections
     collections = [
-        ("text", text_collection, 10),
-        ("table", table_collection, 10),
-        ("image", image_collection, 5)
+        ("text", text_collection, 6),
+        ("table", table_collection, 4),
+        ("image", image_collection, 3),
     ]
 
     for source_type, collection, top_k in collections:
 
         count = collection.count()
-
         if count == 0:
             continue
 
-        query_args = {
-            "query_embeddings": [query_embedding],
-            "n_results": min(top_k, count),
-            "include": ["documents", "metadatas", "distances"]
-        }
-
-        # Filter by PDF filename if specified
-        if document:
-            query_args["where"] = {"source": document}
-
-        results = collection.query(**query_args)
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(top_k, count),
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
 
         for doc, metadata, distance in zip(
             results["documents"][0],
             results["metadatas"][0],
-            results["distances"][0]
+            results["distances"][0],
         ):
-
             if not doc or not metadata:
                 continue
 
@@ -69,77 +70,47 @@ def retrieve_context(question, document=None):
                 "content": doc,
                 "source": metadata.get("source", "Unknown"),
                 "page": metadata.get("page", "Unknown"),
-                "distance": distance
+                "distance": distance,
             })
 
     if not candidates:
         return "", []
 
-    # 6. Rerank candidates using cross-encoder
-    pairs = [
-        (question, candidate["content"])
-        for candidate in candidates
-    ]
-
+    # Rerank with the cross-encoder
+    pairs = [(question, c["content"]) for c in candidates]
     scores = reranker.predict(pairs)
 
-    for candidate, score in zip(candidates, scores):
-        candidate["rerank_score"] = float(score)
+    for c, s in zip(candidates, scores):
+        c["rerank_score"] = float(s)
 
-    # 7. Sort by relevance score
-    candidates.sort(
-        key=lambda x: x["rerank_score"],
-        reverse=True
-    )
+    candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
 
-    # 8. Remove weakly relevant results
-    MIN_RELEVANCE_SCORE = 0.0
+    if DEBUG_SCORES:
+        top = [round(c["rerank_score"], 2) for c in candidates[:5]]
+        print(f"Top rerank scores: {top} (cutoff {MIN_SCORE})")
 
-    candidates = [
-        item for item in candidates
-        if item["rerank_score"] >= MIN_RELEVANCE_SCORE
-    ]
+    # Drop irrelevant chunks
+    candidates = [c for c in candidates if c["rerank_score"] > MIN_SCORE]
 
     if not candidates:
         return "", []
 
-    # 9. Remove exact duplicate results
-    unique_candidates = []
-    seen = set()
-
-    for item in candidates:
-
-        key = (
-            item["type"],
-            item["source"],
-            item["page"],
-            item["content"]
-        )
-
-        if key not in seen:
-            seen.add(key)
-            unique_candidates.append(item)
-
-    # 10. Keep the top 10 unique results
-    selected = unique_candidates[:10]
+    selected = candidates[:TOP_K_FINAL]
 
     context_parts = []
     sources = []
 
-    # 11. Prepare context and source metadata
     for item in selected:
-
         context_parts.append(
             f"Source type: {item['type']}\n"
             f"PDF: {item['source']}\n"
             f"Page: {item['page']}\n"
             f"Content: {item['content']}"
         )
-
         sources.append({
             "type": item["type"],
             "source": item["source"],
-            "page": item["page"]
+            "page": item["page"],
         })
 
     return "\n\n".join(context_parts), sources

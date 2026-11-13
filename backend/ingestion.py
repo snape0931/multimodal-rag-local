@@ -1,24 +1,37 @@
-
 from pathlib import Path
-from pypdf import PdfReader
 
-# Reuse the embedding model and ChromaDB collection
-# already loaded by backend.retrieval
+import pymupdf
+
 from backend.retrieval import model, text_collection
 
+CHUNK_SIZE = 800      # characters per chunk
+CHUNK_OVERLAP = 150   # characters shared between neighbouring chunks
 
-def split_text(text, chunk_size=500, overlap=100):
+
+def split_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
+    """Split text into overlapping chunks, breaking at spaces."""
+
+    text = " ".join(text.split())
     chunks = []
     start = 0
+    length = len(text)
 
-    while start < len(text):
-        end = start + chunk_size
+    while start < length:
+        end = min(start + chunk_size, length)
+
+        if end < length:
+            cut = text.rfind(" ", start + chunk_size // 2, end)
+            if cut != -1:
+                end = cut
+
         chunk = text[start:end].strip()
-
         if chunk:
             chunks.append(chunk)
 
-        start += chunk_size - overlap
+        if end >= length:
+            break
+
+        start = max(end - overlap, start + 1)
 
     return chunks
 
@@ -26,65 +39,66 @@ def split_text(text, chunk_size=500, overlap=100):
 def ingest_pdf_text(pdf_path):
 
     pdf_path = Path(pdf_path)
-    filename = pdf_path.name
+    source = pdf_path.name
 
-    print(f"Processing PDF: {filename}")
+    print(f"Processing PDF: {source}")
 
-    reader = PdfReader(str(pdf_path))
+    # Remove old records so re-uploading the same PDF doesn't duplicate chunks
+    try:
+        text_collection.delete(where={"source": source})
+    except Exception:
+        pass
 
-    all_chunks = []
-    all_metadata = []
-    all_ids = []
+    documents = []
+    metadatas = []
+    ids = []
 
-    for page_num, page in enumerate(reader.pages, start=1):
+    pdf = pymupdf.open(str(pdf_path))
 
-        text = page.extract_text()
+    try:
+        for page_number, page in enumerate(pdf, start=1):
 
-        if not text or not text.strip():
-            continue
+            text = page.get_text("text")
 
-        chunks = split_text(text)
+            if not text or not text.strip():
+                continue
 
-        for chunk_num, chunk in enumerate(chunks):
+            for chunk_number, chunk in enumerate(split_text(text)):
+                documents.append(chunk)
+                metadatas.append({
+                    "source": source,
+                    "page": page_number,
+                    "type": "text"
+                })
+                ids.append(f"{source}_p{page_number}_c{chunk_number}")
+    finally:
+        pdf.close()
 
-            all_chunks.append(chunk)
-
-            all_metadata.append({
-                "source": filename,
-                "page": page_num
-            })
-
-            all_ids.append(
-                f"{filename}_page_{page_num}_chunk_{chunk_num}"
-            )
-
-    if not all_chunks:
+    if not documents:
+        print("No extractable text found (is this a scanned PDF?)")
         return {
             "status": "completed",
-            "filename": filename,
-            "chunks_added": 0,
-            "message": "No extractable text found."
+            "chunks_indexed": 0
         }
 
-    print(f"Generating embeddings for {len(all_chunks)} chunks...")
+    print(f"Generating embeddings for {len(documents)} chunks...")
 
     embeddings = model.encode(
-        all_chunks,
+        documents,
+        batch_size=64,
         show_progress_bar=False
     ).tolist()
 
-    # Upsert updates existing IDs instead of creating duplicates
     text_collection.upsert(
-        documents=all_chunks,
+        documents=documents,
         embeddings=embeddings,
-        metadatas=all_metadata,
-        ids=all_ids
+        metadatas=metadatas,
+        ids=ids
     )
 
-    print(f"Successfully indexed {filename}")
+    print(f"Successfully indexed {source}")
 
     return {
         "status": "completed",
-        "filename": filename,
-        "chunks_added": len(all_chunks)
+        "chunks_indexed": len(documents)
     }

@@ -1,0 +1,10 @@
+{
+  "nyquist.pdf": {
+    "summary": "This document discusses signal sampling, reconstruction, and spectrum preservation in the context of communication systems. It explains the need for sampling due to the difference between continuous analog signals and discrete digital data. The document also covers ideal sampling, reconstruction, and the use of antialiasing filters to prevent spectral folding.",
+    "questions": [
+      "What is the purpose of sampling in communication systems?",
+      "How does ideal sampling create replicas of the original signal spectrum?",
+      "What is the effect of not using an antialiasing filter in sampling?"
+    ]
+  }
+}

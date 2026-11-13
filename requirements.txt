@@ -1,8 +1,10 @@
-ollama
-langchain
-langchain-community
+fastapi
+uvicorn
+python-multipart
 chromadb
-pypdf
 sentence-transformers
-streamlit
+pymupdf
+pdfplumber
+pypdf
 pillow
+ollama

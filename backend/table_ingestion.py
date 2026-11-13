@@ -1,71 +1,108 @@
-
-import json
 from pathlib import Path
 
+import pymupdf
+
 from backend.retrieval import model, table_collection
-from table_extractor import extract_tables
+
+
+def clean(value):
+    if value is None:
+        return ""
+    return " ".join(str(value).split())
 
 
 def ingest_pdf_tables(pdf_path):
 
     pdf_path = Path(pdf_path)
-    filename = pdf_path.name
+    source = pdf_path.name
 
-    print(f"Extracting tables from: {filename}")
+    print(f"Extracting tables from: {source}")
 
-    tables = extract_tables(str(pdf_path))
-
-    if not tables:
-        return {
-            "status": "completed",
-            "filename": filename,
-            "tables_found": 0,
-            "records_added": 0
-        }
+    # Remove old records so re-uploading the same PDF doesn't duplicate rows
+    try:
+        table_collection.delete(where={"source": source})
+    except Exception:
+        pass
 
     documents = []
     metadatas = []
     ids = []
+    tables_found = 0
 
-    for table in tables:
+    pdf = pymupdf.open(str(pdf_path))
 
-        table_text = json.dumps(
-            table["data"],
-            ensure_ascii=False
+    try:
+        for page_number, page in enumerate(pdf, start=1):
+
+            try:
+                found = page.find_tables()
+            except Exception:
+                continue
+
+            for table_number, table in enumerate(found.tables, start=1):
+
+                rows = table.extract()
+
+                if not rows or len(rows) < 2:
+                    continue
+
+                tables_found += 1
+
+                headers = [
+                    clean(cell) or f"Column_{i}"
+                    for i, cell in enumerate(rows[0])
+                ]
+
+                for row_number, row in enumerate(rows[1:], start=1):
+
+                    text = (
+                        f"Source: {source}\n"
+                        f"Page: {page_number}\n"
+                        f"Table: {table_number}\n"
+                    )
+
+                    has_data = False
+
+                    for i, value in enumerate(row):
+                        if i < len(headers):
+                            value = clean(value)
+                            if value:
+                                has_data = True
+                            text += f"{headers[i]}: {value}\n"
+
+                    if not has_data:
+                        continue
+
+                    documents.append(text)
+                    metadatas.append({
+                        "source": source,
+                        "page": page_number,
+                        "type": "table"
+                    })
+                    ids.append(
+                        f"{source}_p{page_number}_t{table_number}_r{row_number}"
+                    )
+    finally:
+        pdf.close()
+
+    if documents:
+        embeddings = model.encode(
+            documents,
+            batch_size=64,
+            show_progress_bar=False
+        ).tolist()
+
+        table_collection.upsert(
+            documents=documents,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            ids=ids
         )
 
-        documents.append(table_text)
-
-        metadatas.append({
-            "source": filename,
-            "page": table["page"],
-            "table_number": table["table_number"],
-            "row_number": table["row_number"]
-        })
-
-        ids.append(
-            f"{filename}_page_{table['page']}_table_{table['table_number']}_row_{table['row_number']}"
-        )
-
-    embeddings = model.encode(
-        documents,
-        show_progress_bar=False
-    ).tolist()
-
-    table_collection.upsert(
-        documents=documents,
-        embeddings=embeddings,
-        metadatas=metadatas,
-        ids=ids
-    )
-
-    print(f"Indexed {len(documents)} table rows.")
+    print(f"Tables found: {tables_found}, rows indexed: {len(documents)}")
 
     return {
         "status": "completed",
-        "filename": filename,
-        "tables_found": len(set(
-            (t["page"], t["table_number"]) for t in tables
-        )),
-        "records_added": len(documents)
+        "tables_found": tables_found,
+        "rows_indexed": len(documents)
     }
