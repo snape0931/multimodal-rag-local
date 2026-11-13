@@ -183,8 +183,6 @@ multimodal-rag-local/
 └── README.md
 ```
 
-*Note: The structure is illustrative. Update filenames to match the actual repository.*
-
 ## ⚙️ Installation & Setup
 
 ### 📌 Prerequisites
@@ -250,8 +248,6 @@ Keep the server running while using the application.
 ```bash
 uvicorn backend.main:app --reload
 ```
-
-*Replace `backend.main:app` if your actual FastAPI entry point uses a different module path.*
 
 ### 6. 🌐 Launch the Frontend
 
