@@ -1,0 +1,28 @@
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# ChromaDB vector database
+vectorstore/
+
+# Model cache and weights
+embeddings/
+*.onnx
+*.pt
+*.pth
+*.bin
+
+# IDE
+.vscode/
+
+# Generated files
+.DS_Store
+# Local PDF documents
+data/documents/
+
+# Extracted table data
+data/extracted_tables/
