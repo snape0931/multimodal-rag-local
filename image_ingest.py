@@ -30,7 +30,6 @@ image_files = [
     )
 ]
 
-image_files = image_files[:1]
 
 print(f"Total images to process: {len(image_files)}")
 

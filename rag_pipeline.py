@@ -3,60 +3,89 @@ import chromadb
 import ollama
 from sentence_transformers import SentenceTransformer
 
-# 1. Load embedding model
 print("Loading embedding model...")
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# 2. Connect to ChromaDB
 client = chromadb.PersistentClient(path="./vectorstore")
 
-text_collection = client.get_collection(name="documents")
-table_collection = client.get_collection(name="tables")
+# Connect to all three collections
+text_collection = client.get_collection("documents")
+table_collection = client.get_collection("tables")
+image_collection = client.get_collection("images")
 
-print("Connected to database!")
+print("\nConnected to ChromaDB!")
 print("Text chunks:", text_collection.count())
 print("Table records:", table_collection.count())
+print("Image descriptions:", image_collection.count())
 
-# 3. Ask question
-query = input("\nAsk a question: ")
+query = input("\nAsk your question: ")
 
 query_embedding = model.encode(query).tolist()
 
-# 4. Retrieve relevant text chunks
+context_parts = []
+
+# Retrieve relevant text
 text_results = text_collection.query(
     query_embeddings=[query_embedding],
     n_results=min(3, text_collection.count())
 )
 
-# 5. Retrieve relevant table records
+# Retrieve relevant tables
 table_results = table_collection.query(
     query_embeddings=[query_embedding],
     n_results=min(3, table_collection.count())
 )
 
-# 6. Combine retrieved context
-context_parts = []
+# Retrieve relevant images
+image_results = image_collection.query(
+    query_embeddings=[query_embedding],
+    n_results=min(3, image_collection.count())
+)
 
-for doc in text_results["documents"][0]:
-    context_parts.append("PDF TEXT:\n" + doc)
+# Combine retrieved information
+for doc, metadata in zip(
+    text_results["documents"][0],
+    text_results["metadatas"][0]
+):
+    context_parts.append(
+        f"PDF TEXT | Source: {metadata['source']} "
+        f"| Page: {metadata['page']}\n{doc}"
+    )
 
-for table in table_results["documents"][0]:
-    context_parts.append("PDF TABLE:\n" + table)
+for doc, metadata in zip(
+    table_results["documents"][0],
+    table_results["metadatas"][0]
+):
+    context_parts.append(
+        f"PDF TABLE | Source: {metadata['source']} "
+        f"| Page: {metadata['page']}\n{doc}"
+    )
+
+for doc, metadata in zip(
+    image_results["documents"][0],
+    image_results["metadatas"][0]
+):
+    context_parts.append(
+        f"PDF IMAGE | Source: {metadata['source']} "
+        f"| Page: {metadata['page']}\n{doc}"
+    )
 
 context = "\n\n".join(context_parts)
 
-# 7. Generate answer using Llama
 prompt = f"""
-You are a helpful document assistant.
+You are a multimodal PDF research assistant.
 
-Answer the question using the provided PDF text
-and table information.
+Answer the user's question using the retrieved
+text, tables and image descriptions.
 
-Use numerical values from tables accurately.
-If the answer is unavailable in the context,
-say that the documents do not contain this information.
+Rules:
+- Use numerical values accurately.
+- Combine information from different sources when relevant.
+- Do not invent facts.
+- Mention the source PDF and page number.
+- If information is unavailable, say so.
 
-Context:
+Retrieved Context:
 {context}
 
 Question:
@@ -65,7 +94,7 @@ Question:
 Answer:
 """
 
-print("\nGenerating answer...")
+print("\nGenerating answer using Llama...")
 
 response = ollama.chat(
     model="llama3.2:3b",
@@ -74,6 +103,5 @@ response = ollama.chat(
     ]
 )
 
-# 8. Display final answer
 print("\n========== FINAL ANSWER ==========\n")
 print(response["message"]["content"])

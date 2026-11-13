@@ -8,6 +8,7 @@ OUTPUT_FOLDER = "data/extracted_tables"
 
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
+
 def extract_tables(pdf_path):
 
     all_tables = []
@@ -28,7 +29,7 @@ def extract_tables(pdf_path):
                     for i, cell in enumerate(table[0])
                 ]
 
-                for row in table[1:]:
+                for row_index, row in enumerate(table[1:]):
 
                     row_data = {}
 
@@ -36,37 +37,40 @@ def extract_tables(pdf_path):
 
                         if i < len(headers):
                             row_data[headers[i]] = (
-                                str(value).strip()
-                                if value else ""
+                                str(value).strip() if value else ""
                             )
 
                     all_tables.append({
                         "page": page_number,
                         "table_number": table_number + 1,
+                        "row_number": row_index + 1,
                         "data": row_data
                     })
 
     return all_tables
 
 
-for filename in os.listdir(PDF_FOLDER):
+# Run this section only when executing table_extractor.py directly
+if __name__ == "__main__":
 
-    if filename.lower().endswith(".pdf"):
+    for filename in os.listdir(PDF_FOLDER):
 
-        pdf_path = os.path.join(PDF_FOLDER, filename)
+        if filename.lower().endswith(".pdf"):
 
-        print(f"Processing: {filename}")
+            pdf_path = os.path.join(PDF_FOLDER, filename)
 
-        tables = extract_tables(pdf_path)
+            print(f"Processing: {filename}")
 
-        output_file = os.path.join(
-            OUTPUT_FOLDER,
-            filename.replace(".pdf", "_tables.json")
-        )
+            tables = extract_tables(pdf_path)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(tables, f, indent=4, ensure_ascii=False)
+            output_file = os.path.join(
+                OUTPUT_FOLDER,
+                os.path.splitext(filename)[0] + "_tables.json"
+            )
 
-        print(f"Tables extracted: {len(tables)}")
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(tables, f, indent=4, ensure_ascii=False)
 
-print("Table extraction completed!")
+            print(f"Tables extracted: {len(tables)}")
+
+    print("Table extraction completed!")

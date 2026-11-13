@@ -2,23 +2,24 @@
 import fitz
 import os
 
-PDF_FOLDER = "data/documents"
 IMAGE_FOLDER = "data/extracted_images"
 
 os.makedirs(IMAGE_FOLDER, exist_ok=True)
 
-for filename in os.listdir(PDF_FOLDER):
 
-    if filename.lower().endswith(".pdf"):
+def extract_images(pdf_path):
 
-        pdf_path = os.path.join(PDF_FOLDER, filename)
+    pdf_path = str(pdf_path)
+    filename = os.path.basename(pdf_path)
+    pdf_name = os.path.splitext(filename)[0]
 
-        print(f"\nProcessing: {filename}")
+    print(f"Extracting images from: {filename}")
 
-        pdf = fitz.open(pdf_path)
+    extracted_images = []
 
-        image_count = 0
+    pdf = fitz.open(pdf_path)
 
+    try:
         for page_number, page in enumerate(pdf, start=1):
 
             images = page.get_images(full=True)
@@ -33,8 +34,7 @@ for filename in os.listdir(PDF_FOLDER):
                 image_ext = image_data["ext"]
 
                 image_name = (
-                    f"{os.path.splitext(filename)[0]}"
-                    f"_page{page_number}"
+                    f"{pdf_name}_page{page_number}"
                     f"_image{image_index + 1}.{image_ext}"
                 )
 
@@ -45,10 +45,30 @@ for filename in os.listdir(PDF_FOLDER):
                 with open(image_path, "wb") as f:
                     f.write(image_bytes)
 
-                image_count += 1
+                extracted_images.append({
+                    "filename": image_name,
+                    "path": image_path,
+                    "source": filename,
+                    "page": page_number
+                })
 
-        print(f"Images extracted: {image_count}")
-
+    finally:
         pdf.close()
 
-print("\nImage extraction completed!")
+    print(f"Images extracted: {len(extracted_images)}")
+
+    return extracted_images
+
+
+if __name__ == "__main__":
+
+    PDF_FOLDER = "data/documents"
+
+    for filename in os.listdir(PDF_FOLDER):
+
+        if filename.lower().endswith(".pdf"):
+
+            pdf_path = os.path.join(PDF_FOLDER, filename)
+            extract_images(pdf_path)
+
+    print("Image extraction completed!")
