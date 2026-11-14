@@ -1,3 +1,10 @@
+import os
+
+# The models are already downloaded, so don't contact huggingface.co on every
+# start (it can rate-limit you and makes startup slow). If you ever change a
+# model name below, comment out this line once so the new model can download.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 import chromadb
 from sentence_transformers import SentenceTransformer, CrossEncoder
 

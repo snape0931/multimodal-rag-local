@@ -16,6 +16,26 @@ OLLAMA_OPTIONS = {
     "num_predict": 250,   # hard cap on answer length = big speed win
 }
 
+# Chatbot mode (no PDFs): longer replies and more remembered turns
+CHAT_OPTIONS = {
+    "temperature": 0.6,
+    "num_ctx": 3072,      # keep equal to OLLAMA_OPTIONS so the model isn't reloaded
+    "num_predict": 600,
+}
+MAX_CHAT_HISTORY = 10
+MAX_CHAT_HISTORY_CHARS = 900
+
+CHAT_SYSTEM_PROMPT = """You are OmniDoc AI in Chatbot mode: a friendly, knowledgeable assistant for everyday questions such as study doubts, explaining concepts, maths, coding, writing and planning.
+
+- Be clear, accurate and conversational. Start with the answer itself.
+- Match the length to the question: short for simple ones, step by step for complex ones.
+- Use short bullet points or numbered steps when they help.
+- Put code in fenced code blocks (```) and name the language.
+- Write maths in plain text, like E = m × c^2. Never use LaTeX or dollar signs outside code.
+- If you are not sure, or the topic may have changed recently, say so instead of guessing. You cannot browse the internet.
+- You cannot see the user's uploaded PDFs in this mode. If they ask about a PDF, tell them to switch to PDF Analyzer mode.
+- Reply in the language the user writes in."""
+
 # How much earlier conversation is shown to the model (keeps prompts short and fast)
 MAX_HISTORY_MESSAGES = 4
 MAX_HISTORY_CHARS = 400
@@ -162,6 +182,26 @@ def build_messages(query, context, history=None):
     )
 
 
+def build_chat_messages(query, history=None):
+    """Chatbot mode: general conversation, no document context."""
+    turns = []
+
+    for item in (history or [])[-MAX_CHAT_HISTORY:]:
+        role = item.get("role")
+        content = (item.get("content") or "").strip()
+
+        if role not in ("user", "assistant") or not content:
+            continue
+
+        turns.append({"role": role, "content": content[:MAX_CHAT_HISTORY_CHARS]})
+
+    return (
+        [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+        + turns
+        + [{"role": "user", "content": query}]
+    )
+
+
 def _starts_with_not_found(text):
     cleaned = text.upper().replace(" ", "_").lstrip("_.!*`\"'\n")
     return cleaned.startswith(NOT_FOUND_TOKEN)
@@ -205,6 +245,39 @@ def generate_answer(query, context, history=None):
         return NOT_FOUND_MESSAGE
 
     return answer
+
+
+def stream_messages(messages, options=None):
+    """
+    Streams plain tokens for a ready-made prompt. Used for summaries, key
+    concepts, figure explanations and page questions (see broad_queries.py).
+    These prompts never use NOT_FOUND, so no tokens are held back.
+    """
+    stream = ollama.chat(
+        model=ANSWER_MODEL,
+        messages=messages,
+        stream=True,
+        keep_alive=KEEP_ALIVE,
+        options=options or OLLAMA_OPTIONS,
+    )
+
+    for part in stream:
+        token = part["message"]["content"]
+
+        if token:
+            yield token
+
+
+def chat_messages(messages, options=None):
+    """Non-streaming version of stream_messages (used by /ask)."""
+    response = ollama.chat(
+        model=ANSWER_MODEL,
+        messages=messages,
+        keep_alive=KEEP_ALIVE,
+        options=options or OLLAMA_OPTIONS,
+    )
+
+    return response["message"]["content"].strip()
 
 
 def stream_answer(query, context, history=None):

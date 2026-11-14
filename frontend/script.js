@@ -29,6 +29,25 @@ const themeToggle = document.getElementById("themeToggle");
 const themeIcon = document.getElementById("themeIcon");
 const themeText = document.getElementById("themeText");
 
+const accentPicker = document.getElementById("accentPicker");
+
+const chatLayout = document.getElementById("chatLayout");
+const splitBtn = document.getElementById("splitBtn");
+const pdfPane = document.getElementById("pdfPane");
+const pdfFrame = document.getElementById("pdfFrame");
+const pdfEmpty = document.getElementById("pdfEmpty");
+const pdfPaneTitle = document.getElementById("pdfPaneTitle");
+const pdfOpenTab = document.getElementById("pdfOpenTab");
+const pdfClose = document.getElementById("pdfClose");
+
+const uploadCard = document.querySelector(".upload-card");
+const pageFlip = document.getElementById("pageFlip");
+
+const paletteBackdrop = document.getElementById("paletteBackdrop");
+const paletteInput = document.getElementById("paletteInput");
+const paletteList = document.getElementById("paletteList");
+const paletteBtn = document.getElementById("paletteBtn");
+
 // Remember the starting chat view (welcome message) so "New chat" can restore it
 const initialChatHTML = chatMessages.innerHTML;
 
@@ -43,15 +62,15 @@ const initialChatHTML = chatMessages.innerHTML;
     style.textContent = `
         .source-item.clickable { cursor: pointer; transition: transform .15s ease, filter .15s ease; }
         .source-item.clickable:hover { filter: brightness(1.25); transform: translateY(-1px); }
-        .source-item.clickable:focus-visible { outline: 2px solid #8b6cff; outline-offset: 2px; }
+        .source-item.clickable:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
 
         .msg-actions { display: flex; gap: 8px; margin-top: 10px; }
         .msg-action-btn {
             background: transparent; color: inherit; cursor: pointer;
-            border: 1px solid rgba(140, 120, 255, 0.35); border-radius: 8px;
+            border: 1px solid hsl(var(--accent-hue) 100% 74% / 0.35); border-radius: 8px;
             padding: 3px 10px; font-size: 12px; opacity: .75;
         }
-        .msg-action-btn:hover { opacity: 1; background: rgba(140, 120, 255, 0.15); }
+        .msg-action-btn:hover { opacity: 1; background: hsl(var(--accent-hue) 100% 74% / 0.15); }
 
         .stop-btn {
             display: none; margin-left: 8px; cursor: pointer; font: inherit; font-size: 14px;
@@ -61,11 +80,9 @@ const initialChatHTML = chatMessages.innerHTML;
         .stop-btn.visible { display: inline-flex; align-items: center; }
         .stop-btn:hover { background: rgba(248, 113, 113, 0.22); }
 
-        .chat-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
-
         .summary-card {
             margin-top: 18px; padding: 16px 18px; border-radius: 14px;
-            border: 1px solid rgba(140, 120, 255, 0.35); background: rgba(140, 120, 255, 0.08);
+            border: 1px solid hsl(var(--accent-hue) 100% 74% / 0.35); background: hsl(var(--accent-hue) 100% 74% / 0.08);
             text-align: left;
         }
         .summary-card h4 { margin: 0 0 6px; font-size: 14px; letter-spacing: .02em; }
@@ -75,9 +92,9 @@ const initialChatHTML = chatMessages.innerHTML;
         .summary-chip {
             cursor: pointer; font: inherit; font-size: 13px; color: inherit;
             padding: 7px 12px; border-radius: 999px;
-            border: 1px solid rgba(140, 120, 255, 0.45); background: rgba(140, 120, 255, 0.12);
+            border: 1px solid hsl(var(--accent-hue) 100% 74% / 0.45); background: hsl(var(--accent-hue) 100% 74% / 0.12);
         }
-        .summary-chip:hover { background: rgba(140, 120, 255, 0.28); }
+        .summary-chip:hover { background: hsl(var(--accent-hue) 100% 74% / 0.28); }
     `;
 
     document.head.appendChild(style);
@@ -155,12 +172,71 @@ if (themeToggle) {
 
 
 // =====================================
+// 2b. ACCENT COLOURS (purple / teal / sunset)
+// =====================================
+
+const ACCENTS = ["purple", "teal", "sunset"];
+
+let currentAccent = localStorage.getItem("omnidoc-accent") || "purple";
+
+function applyAccent(name) {
+    if (!ACCENTS.includes(name)) name = "purple";
+
+    currentAccent = name;
+
+    document.documentElement.setAttribute("data-accent", name);
+    localStorage.setItem("omnidoc-accent", name);
+
+    if (accentPicker) {
+        accentPicker.querySelectorAll("button").forEach(button => {
+            button.classList.toggle("active", button.dataset.accent === name);
+        });
+    }
+}
+
+applyAccent(currentAccent);
+
+if (accentPicker) {
+    accentPicker.addEventListener("click", event => {
+        const button = event.target.closest("button[data-accent]");
+
+        if (button) applyAccent(button.dataset.accent);
+    });
+}
+
+
+// =====================================
 // 3. LOAD DOCUMENTS
 // =====================================
 
+// Shimmering placeholder cards while the list loads
+function showDocumentSkeleton(count = 4) {
+    documentList.innerHTML = "";
+
+    for (let i = 0; i < count; i++) {
+        const card = document.createElement("div");
+        card.className = "document-item skeleton-card";
+
+        const icon = document.createElement("div");
+        icon.className = "skeleton skeleton-icon";
+
+        const lines = document.createElement("div");
+        lines.className = "skeleton-lines";
+
+        const long = document.createElement("div");
+        long.className = "skeleton skeleton-line";
+
+        const short = document.createElement("div");
+        short.className = "skeleton skeleton-line short";
+
+        lines.append(long, short);
+        card.append(icon, lines);
+        documentList.appendChild(card);
+    }
+}
+
 async function loadDocuments() {
-    documentList.innerHTML =
-        '<p class="empty-message">Loading documents...</p>';
+    showDocumentSkeleton();
 
     refreshBtn.disabled = true;
     refreshBtn.textContent = "Loading...";
@@ -221,7 +297,7 @@ async function loadDocuments() {
             deleteBtn.type = "button";
 
             deleteBtn.addEventListener("click", () => {
-                deleteDocument(doc.filename);
+                deleteDocument(doc.filename, doc.status);
             });
 
             card.append(info, deleteBtn);
@@ -261,6 +337,7 @@ async function loadDocuments() {
 // =====================================
 
 let statusTimer = null;
+let polledFile = null;   // the PDF whose indexing progress is being shown
 
 function stopStatusPolling() {
     if (statusTimer) {
@@ -353,14 +430,26 @@ async function checkSummary(filename) {
 
 function pollStatus(filename) {
     stopStatusPolling();
+    polledFile = filename;
 
     let summaryDone = false;
+    let celebrated = false;
+
+    setProcessing(true);
 
     statusTimer = setInterval(async () => {
         try {
             const response = await fetch(
                 `${API_URL}/status/${encodeURIComponent(filename)}`
             );
+
+            if (response.status === 404) {
+                // The PDF was deleted while it was being indexed
+                stopStatusPolling();
+                setProcessing(false);
+                uploadStatus.textContent = "";
+                return;
+            }
 
             if (!response.ok) return;
 
@@ -381,10 +470,17 @@ function pollStatus(filename) {
 
                 uploadStatus.textContent = message;
                 finished = true;
+                setProcessing(false);
+
+                if (!celebrated) {
+                    celebrated = true;
+                    launchConfetti();
+                }
 
             } else if (info.stage === "error") {
                 uploadStatus.textContent = `❌ ${info.error || "Indexing failed."}`;
                 finished = true;
+                setProcessing(false);
 
             } else if (
                 info.stage === "tables" ||
@@ -412,14 +508,11 @@ uploadBtn.addEventListener("click", () => {
     pdfInput.click();
 });
 
-pdfInput.addEventListener("change", async () => {
-    const file = pdfInput.files[0];
-
+async function uploadFile(file) {
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith(".pdf")) {
         uploadStatus.textContent = "Please select a PDF file.";
-        pdfInput.value = "";
         return;
     }
 
@@ -457,8 +550,15 @@ pdfInput.addEventListener("change", async () => {
     } finally {
         uploadBtn.disabled = false;
         uploadBtn.innerHTML = "<span>↑</span> Choose PDF";
-        pdfInput.value = "";
     }
+}
+
+pdfInput.addEventListener("change", async () => {
+    const file = pdfInput.files[0];
+
+    await uploadFile(file);
+
+    pdfInput.value = "";
 });
 
 
@@ -466,9 +566,13 @@ pdfInput.addEventListener("change", async () => {
 // 5. DELETE DOCUMENT
 // =====================================
 
-async function deleteDocument(filename) {
+async function deleteDocument(filename, status) {
+    const stillIndexing = Boolean(status) && !["done", "error"].includes(status);
+
     const confirmed = confirm(
-        `Are you sure you want to delete "${filename}"?`
+        stillIndexing
+            ? `"${filename}" is still being indexed.\n\nDeleting it will stop the indexing and remove the document. Continue?`
+            : `Are you sure you want to delete "${filename}"?`
     );
 
     if (!confirmed) return;
@@ -487,9 +591,15 @@ async function deleteDocument(filename) {
             throw new Error(data.detail || "Deletion failed.");
         }
 
-        alert(data.message || "Document deleted successfully.");
+        if (polledFile === filename) {
+            stopStatusPolling();
+            setProcessing(false);
+            uploadStatus.textContent = "";
+        }
 
         removeSummaryCard();
+
+        if (currentPdf.name === filename) clearPdfPane();
 
         await loadDocuments();
 
@@ -616,7 +726,13 @@ function addSources(sources) {
             item.setAttribute("role", "link");
             item.title = `Open ${source.source} at page ${source.page}`;
 
-            const openPdf = () => window.open(url, "_blank", "noopener");
+            const openPdf = () => {
+                if (splitOn) {
+                    showPdfPage(source.source, Number(source.page) || 1);
+                } else {
+                    window.open(url, "_blank", "noopener");
+                }
+            };
 
             item.addEventListener("click", openPdf);
 
@@ -654,7 +770,7 @@ function addSources(sources) {
 // 8. AI LOADING INDICATOR
 // =====================================
 
-function showLoadingMessage() {
+function showLoadingMessage(mode) {
     const message = document.createElement("div");
     message.className = "message ai loading-message";
     message.id = "aiLoadingMessage";
@@ -665,7 +781,8 @@ function showLoadingMessage() {
 
     const content = document.createElement("div");
     content.className = "message-content";
-    content.textContent = "Let me check your documents... 🔍";
+    content.textContent =
+        mode === "chat" ? "Thinking... 💭" : "Let me check your documents... 🔍";
 
     message.append(label, content);
     chatMessages.appendChild(message);
@@ -706,17 +823,13 @@ stopBtn.addEventListener("click", () => {
     }
 });
 
-// New chat button (above the messages)
-const chatToolbar = document.createElement("div");
-chatToolbar.className = "chat-toolbar";
-
+// New chat button (placed in the existing toolbar, next to the SOURCE selector)
 const newChatBtn = document.createElement("button");
 newChatBtn.type = "button";
 newChatBtn.className = "msg-action-btn";
 newChatBtn.textContent = "＋ New chat";
 
-chatToolbar.appendChild(newChatBtn);
-chatMessages.insertAdjacentElement("beforebegin", chatToolbar);
+document.querySelector(".chat-controls").appendChild(newChatBtn);
 
 newChatBtn.addEventListener("click", () => {
     chatEpoch += 1;
@@ -726,7 +839,7 @@ newChatBtn.addEventListener("click", () => {
     }
 
     chatHistory.length = 0;
-    chatMessages.innerHTML = initialChatHTML;
+    chatMessages.innerHTML = welcomeHTML(currentMode);
     questionInput.value = "";
     questionInput.focus();
 });
@@ -771,7 +884,10 @@ async function askQuestion() {
     askBtn.textContent = "Thinking...";
     stopBtn.classList.add("visible");
 
-    showLoadingMessage();
+    const requestMode = currentMode;
+    const show = text => (requestMode === "chat" ? cleanChat(text) : cleanMath(text));
+
+    showLoadingMessage(requestMode);
 
     const epoch = chatEpoch;
     currentAbort = new AbortController();
@@ -779,6 +895,7 @@ async function askQuestion() {
     let answerMessage = null;   // the reply that is being streamed
     let answerBox = null;       // its text element
     let answerText = "";
+    let answerSources = [];
 
     function handleEvent(event) {
         if (epoch !== chatEpoch) return;   // chat was reset meanwhile
@@ -791,7 +908,7 @@ async function askQuestion() {
             }
 
             answerText += event.text;
-            answerBox.textContent = cleanMath(answerText);
+            answerBox.textContent = show(answerText);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
         } else if (event.type === "not_found") {
@@ -799,7 +916,17 @@ async function askQuestion() {
             addMessage("assistant", event.text);
 
         } else if (event.type === "sources") {
-            addSources(event.sources);
+            answerSources = event.sources || [];
+            addSources(answerSources);
+
+            // In split view, bring the best source page into view
+            const best = answerSources.find(
+                s => Number.isInteger(Number(s.page)) && Number(s.page) > 0
+            );
+
+            if (splitOn && best) {
+                showPdfPage(best.source, Number(best.page));
+            }
 
         } else if (event.type === "error") {
             removeLoadingMessage();
@@ -819,8 +946,11 @@ async function askQuestion() {
 
             body: JSON.stringify({
                 question: question,
-                document: selectedDocument,
-                history: chatHistory.slice(-MAX_HISTORY_MESSAGES)
+                mode: requestMode,
+                document: requestMode === "chat" ? null : selectedDocument,
+                history: chatHistory.slice(
+                    -(requestMode === "chat" ? CHAT_HISTORY_MESSAGES : MAX_HISTORY_MESSAGES)
+                )
             })
         });
 
@@ -866,13 +996,18 @@ async function askQuestion() {
             removeLoadingMessage();
 
             if (answerMessage && answerText.trim()) {
-                addCopyButton(answerMessage, () => cleanMath(answerText));
+                if (requestMode === "chat") {
+                    renderChatMarkdown(answerBox, show(answerText));
+                } else {
+                    linkCitations(answerBox, show(answerText), answerSources);
+                }
+                addCopyButton(answerMessage, () => show(answerText));
 
                 // Remember this exchange, but only when it was actually answered
                 chatHistory.push({ role: "user", content: question });
                 chatHistory.push({
                     role: "assistant",
-                    content: cleanMath(answerText)
+                    content: show(answerText)
                 });
             }
         }
@@ -884,8 +1019,8 @@ async function askQuestion() {
             if (error.name === "AbortError") {
                 // The user pressed Stop: keep what was written so far
                 if (answerBox) {
-                    answerBox.textContent = cleanMath(answerText) + "\n\n⏹️ (stopped)";
-                    addCopyButton(answerMessage, () => cleanMath(answerText));
+                    answerBox.textContent = show(answerText) + "\n\n⏹️ (stopped)";
+                    addCopyButton(answerMessage, () => show(answerText));
                 } else {
                     addMessage("assistant", "⏹️ Stopped.");
                 }
@@ -930,7 +1065,7 @@ chatMessages.addEventListener("click", event => {
     if (!suggestion) return;
 
     questionInput.value = suggestion.textContent.trim();
-    questionInput.focus();
+    askQuestion();   // send straight away
 });
 
 
@@ -942,9 +1077,706 @@ refreshBtn.addEventListener("click", loadDocuments);
 
 
 // =====================================
+// 13b. ASSISTANT MODE: PDF Analyzer <-> Chatbot
+// =====================================
+
+const modeSwitch = document.getElementById("modeSwitch");
+const chatEyebrow = document.getElementById("chatEyebrow");
+const chatSubtitle = document.getElementById("chatSubtitle");
+const modeNote = document.getElementById("modeNote");
+const toolbarLabelText = document.getElementById("toolbarLabelText");
+
+const CHAT_HISTORY_MESSAGES = 10;
+
+const MODE_TEXT = {
+    pdf: {
+        eyebrow: "INTELLIGENT DOCUMENT SEARCH",
+        subtitle: "Your documents hold the answers. Let's find them.",
+        note: "PDF Analyzer answers only from the PDFs you upload.",
+        toolbar: "DOCUMENT CONTEXT",
+        placeholder: "Ask a question about your documents..."
+    },
+    chat: {
+        eyebrow: "GENERAL ASSISTANT",
+        subtitle: "Ask me anything: study doubts, coding, maths, writing.",
+        note: "Chatbot mode doesn't use your PDFs. Switch to PDF Analyzer to ask about them.",
+        toolbar: "GENERAL CHAT",
+        placeholder: "Ask me anything..."
+    }
+};
+
+const CHAT_WELCOME_HTML = `
+    <div class="welcome-message">
+        <div class="welcome-ai-icon">💬</div>
+        <div class="welcome-eyebrow">OMNIDOC CHATBOT</div>
+        <h3>Ask me anything</h3>
+        <p>Study doubts, coding help, maths, writing, ideas. No PDF needed.</p>
+        <div class="suggestion-pills">
+            <span>Explain recursion with an example</span>
+            <span>Difference between RAM and ROM</span>
+            <span>Help me plan a study timetable</span>
+        </div>
+    </div>
+`;
+
+// Each mode keeps its own conversation, so switching never mixes them up
+const modeState = {
+    pdf: { history: [], nodes: null },
+    chat: { history: [], nodes: null }
+};
+
+let currentMode = "pdf";
+
+function welcomeHTML(mode) {
+    return mode === "chat" ? CHAT_WELCOME_HTML : initialChatHTML;
+}
+
+function updateModeUI() {
+    const text = MODE_TEXT[currentMode];
+
+    chatSection.classList.toggle("mode-chat", currentMode === "chat");
+
+    modeSwitch.querySelectorAll("button[data-mode]").forEach(button => {
+        const active = button.dataset.mode === currentMode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+    });
+
+    chatEyebrow.textContent = text.eyebrow;
+    chatSubtitle.textContent = text.subtitle;
+    modeNote.textContent = text.note;
+    toolbarLabelText.textContent = text.toolbar;
+    questionInput.placeholder = text.placeholder;
+}
+
+function setMode(mode) {
+    if (!MODE_TEXT[mode] || mode === currentMode) return;
+
+    // Wait for a running answer instead of mixing two conversations
+    if (askBtn.disabled) return;
+
+    // Park the current conversation (moving the nodes keeps their buttons working)
+    const saved = modeState[currentMode];
+    saved.history = chatHistory.slice();
+
+    const parked = document.createDocumentFragment();
+
+    while (chatMessages.firstChild) {
+        parked.appendChild(chatMessages.firstChild);
+    }
+
+    saved.nodes = parked;
+
+    // Bring back the other one
+    currentMode = mode;
+
+    const next = modeState[mode];
+
+    chatHistory.length = 0;
+    chatHistory.push(...next.history);
+
+    if (next.nodes && next.nodes.childNodes.length > 0) {
+        chatMessages.appendChild(next.nodes);
+    } else {
+        chatMessages.innerHTML = welcomeHTML(mode);
+    }
+
+    next.nodes = null;
+
+    if (mode === "chat" && splitOn) setSplit(false);
+
+    localStorage.setItem("omnidoc-mode", mode);
+
+    updateModeUI();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    questionInput.focus();
+}
+
+modeSwitch.addEventListener("click", event => {
+    const button = event.target.closest("button[data-mode]");
+
+    if (button) setMode(button.dataset.mode);
+});
+
+// Like cleanMath, but leaves code alone so $, _{ } and \ inside code survive
+function cleanChat(text) {
+    return text
+        .split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g)
+        .map((part, index) => (index % 2 === 1 ? part : cleanMath(part)))
+        .join("");
+}
+
+function appendInline(parent, text) {
+    text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g).forEach((piece, index) => {
+        if (!piece) return;
+
+        if (index % 2 === 1) {
+            if (piece.startsWith("`")) {
+                const code = document.createElement("code");
+                code.textContent = piece.slice(1, -1);
+                parent.appendChild(code);
+            } else {
+                const strong = document.createElement("strong");
+                strong.textContent = piece.slice(2, -2);
+                parent.appendChild(strong);
+            }
+        } else {
+            parent.appendChild(document.createTextNode(piece));
+        }
+    });
+}
+
+function buildCodeBlock(language, code) {
+    const block = document.createElement("div");
+    block.className = "code-block";
+
+    const head = document.createElement("div");
+    head.className = "code-head";
+
+    const label = document.createElement("span");
+    label.textContent = language || "code";
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "code-copy";
+    copyBtn.textContent = "Copy";
+
+    copyBtn.addEventListener("click", async () => {
+        await copyText(code);
+        copyBtn.textContent = "Copied ✓";
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+    });
+
+    head.append(label, copyBtn);
+
+    const pre = document.createElement("pre");
+    const codeEl = document.createElement("code");
+    codeEl.textContent = code;
+    pre.appendChild(codeEl);
+
+    block.append(head, pre);
+
+    return block;
+}
+
+// Shows code blocks, `inline code` and **bold** without using innerHTML
+function renderChatMarkdown(box, text) {
+    box.textContent = "";
+
+    const FENCE = /```([\w+#.-]*)[^\S\n]*\n?([\s\S]*?)(?:```|$)/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = FENCE.exec(text)) !== null) {
+        const before = text.slice(lastIndex, match.index).replace(/^\n/, "").replace(/\n$/, "");
+
+        if (before) appendInline(box, before);
+
+        box.appendChild(buildCodeBlock(match[1], match[2].replace(/\n$/, "")));
+
+        lastIndex = FENCE.lastIndex;
+    }
+
+    const rest = text.slice(lastIndex).replace(/^\n/, "");
+
+    if (rest) appendInline(box, rest);
+}
+
+
+// =====================================
+// 14. SPLIT-SCREEN READING MODE (chat left, PDF right)
+// =====================================
+
+let splitOn = false;
+const currentPdf = { name: null, page: 1, version: 0 };
+
+function setSplit(on) {
+    splitOn = on;
+
+    chatLayout.classList.toggle("split", on);
+    splitBtn.classList.toggle("active", on);
+    splitBtn.textContent = on ? "📖 Split view: on" : "📖 Split view";
+
+    // Nothing open yet: show the selected document
+    if (on && !currentPdf.name && documentSelect.value) {
+        showPdfPage(documentSelect.value, 1);
+    }
+}
+
+function showPdfPage(name, page = 1) {
+    if (!name) return;
+
+    if (!splitOn) setSplit(true);
+
+    currentPdf.name = name;
+    currentPdf.page = page;
+    currentPdf.version += 1;
+
+    // The ?v= makes the browser reload the viewer so it jumps to the new page
+    pdfFrame.src =
+        `${API_URL}/pdfs/${encodeURIComponent(name)}?v=${currentPdf.version}#page=${page}`;
+
+    pdfFrame.hidden = false;
+    pdfEmpty.hidden = true;
+    pdfPaneTitle.textContent = `${name} · page ${page}`;
+
+    // Little glow so the eye finds the pane
+    pdfPane.classList.remove("flash");
+    void pdfPane.offsetWidth;
+    pdfPane.classList.add("flash");
+
+    if (window.innerWidth <= 1100) {
+        pdfPane.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+}
+
+function clearPdfPane() {
+    currentPdf.name = null;
+    pdfFrame.src = "about:blank";
+    pdfFrame.hidden = true;
+    pdfEmpty.hidden = false;
+    pdfPaneTitle.textContent = "No document open";
+}
+
+splitBtn.addEventListener("click", () => setSplit(!splitOn));
+pdfClose.addEventListener("click", () => setSplit(false));
+
+pdfOpenTab.addEventListener("click", () => {
+    if (!currentPdf.name) return;
+
+    window.open(
+        `${API_URL}/pdfs/${encodeURIComponent(currentPdf.name)}#page=${currentPdf.page}`,
+        "_blank",
+        "noopener"
+    );
+});
+
+documentSelect.addEventListener("change", () => {
+    if (splitOn && documentSelect.value) {
+        showPdfPage(documentSelect.value, 1);
+    }
+});
+
+// Turns "(file.pdf, p. 5)" or "(p. 5)" in an answer into clickable chips
+const CITATION_RE =
+    /\(\s*(?:([^(),]+?\.pdf)\s*,\s*)?(?:pp?|pages?)\.?\s*(\d{1,4})\s*\)/gi;
+
+function linkCitations(box, text, sources) {
+    if (!box) return;
+
+    const knownDocs = Array.from(documentSelect.options)
+        .map(option => option.value)
+        .filter(Boolean);
+
+    const fallbackDoc =
+        documentSelect.value ||
+        (sources && sources[0] && sources[0].source) ||
+        (knownDocs.length === 1 ? knownDocs[0] : null);
+
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    let found = false;
+    let match;
+
+    CITATION_RE.lastIndex = 0;
+
+    while ((match = CITATION_RE.exec(text)) !== null) {
+        const named = match[1] ? match[1].trim() : null;
+        const docName = named && knownDocs.includes(named) ? named : fallbackDoc;
+
+        if (!docName) continue;
+
+        const page = Number(match[2]);
+
+        found = true;
+
+        fragment.append(document.createTextNode(text.slice(lastIndex, match.index)));
+
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "cite-chip";
+        chip.textContent = `p. ${page}`;
+        chip.title = `Open ${docName} at page ${page}`;
+        chip.addEventListener("click", () => showPdfPage(docName, page));
+
+        fragment.append(chip);
+
+        lastIndex = match.index + match[0].length;
+    }
+
+    if (!found) return;
+
+    fragment.append(document.createTextNode(text.slice(lastIndex)));
+
+    box.textContent = "";
+    box.append(fragment);
+}
+
+
+// =====================================
+// 15. COMMAND PALETTE (Ctrl+K)
+// =====================================
+
+let paletteItems = [];
+let paletteActive = 0;
+let paletteReturnFocus = null;
+
+function askFromPalette(question, forcePdf = false) {
+    showChat();
+
+    if (forcePdf) setMode("pdf");
+
+    questionInput.value = question;
+    askQuestion();
+}
+
+function buildCommands() {
+    const commands = [
+        { icon: "▦", title: "Go to Documents", hint: "Navigate", run: showDashboard },
+        { icon: "✧", title: "Go to Ask AI", hint: "Navigate", run: showChat },
+        { icon: "📄", title: "Switch to PDF Analyzer mode", hint: "Mode", run: () => { showChat(); setMode("pdf"); } },
+        { icon: "💬", title: "Switch to Chatbot mode", hint: "Mode", run: () => { showChat(); setMode("chat"); } },
+        { icon: "＋", title: "New chat", hint: "Chat", run: () => { showChat(); newChatBtn.click(); } },
+        { icon: "↑", title: "Upload a PDF", hint: "Documents", run: () => { showDashboard(); pdfInput.click(); } },
+        { icon: "↻", title: "Refresh documents", hint: "Documents", run: loadDocuments },
+        { icon: "📖", title: "Toggle split view (PDF next to chat)", hint: "View", run: () => { showChat(); setSplit(!splitOn); } },
+        { icon: "☾", title: "Switch light / dark mode", hint: "Theme", run: () => themeToggle.click() },
+        { icon: "🎨", title: "Accent colour: Purple", hint: "Theme", run: () => applyAccent("purple") },
+        { icon: "🎨", title: "Accent colour: Teal", hint: "Theme", run: () => applyAccent("teal") },
+        { icon: "🎨", title: "Accent colour: Sunset", hint: "Theme", run: () => applyAccent("sunset") },
+        { icon: "✨", title: "Summarize this document", hint: "Ask", run: () => askFromPalette("Summarize this document", true) },
+        { icon: "💡", title: "Find important concepts", hint: "Ask", run: () => askFromPalette("Find important concepts", true) },
+        { icon: "🖼️", title: "Explain a diagram", hint: "Ask", run: () => askFromPalette("Explain a diagram", true) },
+    ];
+
+    // One entry per uploaded PDF
+    Array.from(documentSelect.options)
+        .filter(option => option.value)
+        .forEach(option => {
+            commands.push({
+                icon: "📄",
+                title: `Open ${option.value}`,
+                hint: "PDF",
+                run: () => {
+                    showChat();
+                    setMode("pdf");
+                    documentSelect.value = option.value;
+                    showPdfPage(option.value, 1);
+                }
+            });
+
+            commands.push({
+                icon: "🔎",
+                title: `Ask only in ${option.value}`,
+                hint: "Source",
+                run: () => {
+                    showChat();
+                    setMode("pdf");
+                    documentSelect.value = option.value;
+                    questionInput.focus();
+                }
+            });
+        });
+
+    return commands;
+}
+
+function filterCommands(query) {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+    const matches = buildCommands().filter(command => {
+        const haystack = `${command.title} ${command.hint}`.toLowerCase();
+        return words.every(word => haystack.includes(word));
+    });
+
+    // Anything typed can also be sent to the AI as a question
+    if (query.trim()) {
+        matches.push({
+            icon: "✦",
+            title: `Ask AI: “${query.trim()}”`,
+            hint: "Ask",
+            run: () => askFromPalette(query.trim())
+        });
+    }
+
+    return matches;
+}
+
+function updatePaletteActive(scroll) {
+    Array.from(paletteList.children).forEach((item, index) => {
+        item.classList.toggle("active", index === paletteActive);
+
+        if (scroll && index === paletteActive) {
+            item.scrollIntoView({ block: "nearest" });
+        }
+    });
+}
+
+function renderPalette() {
+    paletteList.innerHTML = "";
+
+    if (paletteItems.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "palette-empty";
+        empty.textContent = "No matching commands";
+        paletteList.appendChild(empty);
+        return;
+    }
+
+    paletteItems.forEach((command, index) => {
+        const item = document.createElement("li");
+        item.className = "palette-item" + (index === paletteActive ? " active" : "");
+        item.setAttribute("role", "option");
+
+        const icon = document.createElement("span");
+        icon.className = "palette-icon";
+        icon.textContent = command.icon;
+
+        const title = document.createElement("span");
+        title.className = "palette-title";
+        title.textContent = command.title;
+
+        const hint = document.createElement("span");
+        hint.className = "palette-hint";
+        hint.textContent = command.hint || "";
+
+        item.append(icon, title, hint);
+
+        item.addEventListener("mouseenter", () => {
+            paletteActive = index;
+            updatePaletteActive(false);
+        });
+
+        item.addEventListener("click", () => runPaletteCommand(command));
+
+        paletteList.appendChild(item);
+    });
+}
+
+function refreshPalette() {
+    paletteItems = filterCommands(paletteInput.value);
+    paletteActive = 0;
+    renderPalette();
+}
+
+function openPalette() {
+    paletteReturnFocus = document.activeElement;
+    paletteBackdrop.hidden = false;
+    paletteInput.value = "";
+    refreshPalette();
+    paletteInput.focus();
+}
+
+function closePalette(restoreFocus = true) {
+    paletteBackdrop.hidden = true;
+
+    if (restoreFocus && paletteReturnFocus && paletteReturnFocus.focus) {
+        paletteReturnFocus.focus();
+    }
+}
+
+function runPaletteCommand(command) {
+    closePalette(false);
+    command.run();
+}
+
+paletteInput.addEventListener("input", refreshPalette);
+
+paletteInput.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown" && paletteItems.length) {
+        event.preventDefault();
+        paletteActive = (paletteActive + 1) % paletteItems.length;
+        updatePaletteActive(true);
+
+    } else if (event.key === "ArrowUp" && paletteItems.length) {
+        event.preventDefault();
+        paletteActive = (paletteActive - 1 + paletteItems.length) % paletteItems.length;
+        updatePaletteActive(true);
+
+    } else if (event.key === "Enter") {
+        event.preventDefault();
+
+        const command = paletteItems[paletteActive];
+
+        if (command) runPaletteCommand(command);
+
+    } else if (event.key === "Escape") {
+        event.preventDefault();
+        closePalette();
+    }
+});
+
+paletteBackdrop.addEventListener("mousedown", event => {
+    if (event.target === paletteBackdrop) closePalette();
+});
+
+paletteBtn.addEventListener("click", openPalette);
+
+document.addEventListener("keydown", event => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+
+        if (paletteBackdrop.hidden) {
+            openPalette();
+        } else {
+            closePalette();
+        }
+    }
+});
+
+
+// =====================================
+// 16. DRAG & DROP UPLOAD, PAGE-FLIP, CONFETTI
+// =====================================
+
+let dragDepth = 0;
+
+function dragHasFiles(event) {
+    return Boolean(
+        event.dataTransfer &&
+        Array.from(event.dataTransfer.types || []).includes("Files")
+    );
+}
+
+uploadCard.addEventListener("dragenter", event => {
+    if (!dragHasFiles(event)) return;
+
+    event.preventDefault();
+    dragDepth += 1;
+    uploadCard.classList.add("drag-over");
+});
+
+uploadCard.addEventListener("dragover", event => {
+    if (!dragHasFiles(event)) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+});
+
+uploadCard.addEventListener("dragleave", event => {
+    if (!dragHasFiles(event)) return;
+
+    dragDepth = Math.max(0, dragDepth - 1);
+
+    if (dragDepth === 0) uploadCard.classList.remove("drag-over");
+});
+
+uploadCard.addEventListener("drop", event => {
+    if (!dragHasFiles(event)) return;
+
+    event.preventDefault();
+    dragDepth = 0;
+    uploadCard.classList.remove("drag-over");
+
+    const pdf = Array.from(event.dataTransfer.files)
+        .find(file => file.name.toLowerCase().endsWith(".pdf"));
+
+    if (!pdf) {
+        uploadStatus.textContent = "Please drop a PDF file.";
+        return;
+    }
+
+    uploadFile(pdf);
+});
+
+// A file dropped outside the card must not make the browser open it
+["dragover", "drop"].forEach(type => {
+    window.addEventListener(type, event => {
+        if (dragHasFiles(event)) event.preventDefault();
+    });
+});
+
+// Page-flip animation while a PDF is being indexed
+function setProcessing(active) {
+    if (pageFlip) pageFlip.hidden = !active;
+}
+
+function launchConfetti() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "confetti-canvas";
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+
+    const ctx = canvas.getContext("2d");
+
+    const hue = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--accent-hue")
+    ) || 262;
+
+    const colors = [
+        `hsl(${hue} 90% 68%)`,
+        `hsl(${hue + 25} 90% 70%)`,
+        `hsl(${hue - 25} 85% 65%)`,
+        "#ffd166",
+        "#4ed6a0",
+        "#ffffff"
+    ];
+
+    // Burst from the middle of the upload card (kept inside the screen)
+    const box = uploadCard.getBoundingClientRect();
+    const originX = Math.min(Math.max(box.left + box.width / 2, 0), canvas.width);
+    const originY = Math.min(Math.max(box.top + box.height / 2, 0), canvas.height);
+
+    const pieces = Array.from({ length: 150 }, () => ({
+        x: originX + (Math.random() - 0.5) * 120,
+        y: originY,
+        vx: (Math.random() - 0.5) * 16,
+        vy: -Math.random() * 13 - 4,
+        size: 5 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 0.4
+    }));
+
+    const DURATION = 2800;
+    const startedAt = performance.now();
+
+    function frame(now) {
+        const elapsed = now - startedAt;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        pieces.forEach(piece => {
+            piece.vy += 0.35;
+            piece.vx *= 0.99;
+            piece.x += piece.vx;
+            piece.y += piece.vy;
+            piece.rotation += piece.spin;
+
+            ctx.save();
+            ctx.translate(piece.x, piece.y);
+            ctx.rotate(piece.rotation);
+            ctx.globalAlpha = Math.max(0, 1 - elapsed / DURATION);
+            ctx.fillStyle = piece.color;
+            ctx.fillRect(-piece.size / 2, -piece.size / 4, piece.size, piece.size / 2);
+            ctx.restore();
+        });
+
+        if (elapsed < DURATION) {
+            requestAnimationFrame(frame);
+        } else {
+            canvas.remove();
+        }
+    }
+
+    requestAnimationFrame(frame);
+}
+
+
+// =====================================
 // 13. INITIALIZE APPLICATION
 // =====================================
 
 loadDocuments();
+
+// Restore the last used mode
+if (localStorage.getItem("omnidoc-mode") === "chat") {
+    setMode("chat");
+} else {
+    updateModeUI();
+}
 
 console.log("OmniDoc AI frontend initialized successfully.");

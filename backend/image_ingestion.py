@@ -1,16 +1,17 @@
 import io
+from pathlib import Path
 
 import ollama
 from PIL import Image
 
 from backend.retrieval import model, image_collection
-from image_extractor import extract_images
+from backend.image_extractor import extract_images
 
 VISION_MODEL = "llava:7b"        # "moondream" is much faster on CPU (ollama pull moondream)
 MIN_SIZE = 200                   # px: skip icons and decorative fragments
-MAX_IMAGES = 8                   # max images described per PDF
+MAX_IMAGES = 12                   # max images described per PDF
 MAX_SIDE = 768                   # shrink images before sending them to the model
-MAX_DESCRIPTION_TOKENS = 120     # short descriptions = much faster
+MAX_DESCRIPTION_TOKENS = 200     # lower (e.g. 120) = faster, but vaguer diagram answers
 
 PROMPT = (
     "In 2-3 short sentences, describe this image. Say what kind of figure it is "
@@ -45,6 +46,12 @@ def ingest_pdf_images(pdf_path):
     print(f"Starting image ingestion: {pdf_path}")
 
     extracted_images = extract_images(pdf_path)
+
+    # Remove old descriptions so a re-uploaded PDF never keeps stale ones
+    try:
+        image_collection.delete(where={"source": Path(pdf_path).name})
+    except Exception:
+        pass
 
     if not extracted_images:
         return {

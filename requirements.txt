@@ -3,8 +3,6 @@ uvicorn
 python-multipart
 chromadb
 sentence-transformers
-pymupdf
-pdfplumber
-pypdf
+pymupdf>=1.24.3
 pillow
 ollama
