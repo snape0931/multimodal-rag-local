@@ -111,19 +111,23 @@ def save_summaries():
 STAGE_LABELS = {
     "queued": "⏳ Waiting in line...",
     "text": "📖 Reading the text...",
-    "tables": "📊 Finding tables...",
     "summary": "✨ Writing a quick summary...",
+    "tables": "📊 Finding tables...",
     "images": "🖼️ Describing images...",
     "done": "✅ All done",
     "error": "❌ Something went wrong",
 }
 
 # While in these stages the summary may still be on its way
-SUMMARY_PENDING_STAGES = {"queued", "text", "tables", "summary"}
+SUMMARY_PENDING_STAGES = {"queued", "text", "summary"}
 
 processing_status = {}
 
-processing_lock = threading.Lock()   # index one PDF at a time
+processing_lock = threading.Lock()   # text, summary and tables: one PDF at a time
+image_lock = threading.Lock()        # figure analysis (slow) has its own lock, so a
+                                     # long image job never blocks the next upload
+
+summary_running = set()              # PDFs whose summary is being rewritten
 
 # A PDF in one of these stages cannot be re-uploaded yet.
 # Deleting is always allowed: it stops the indexing job.
@@ -149,12 +153,12 @@ def job_is_current(name, job):
     return jobs.get(name) == job
 
 
-def begin_stage(name, job, stage):
+def begin_stage(name, job, stage, detail=None):
     """Stops the job if the PDF was deleted, otherwise records the new stage."""
     if not job_is_current(name, job):
         raise JobCancelled()
 
-    set_status(name, stage)
+    set_status(name, stage, detail=detail)
 
 
 def set_status(filename, stage, error=None, detail=None):
@@ -172,10 +176,11 @@ def set_status(filename, stage, error=None, detail=None):
 
 
 def add_warning(filename, text):
-    entry = processing_status.setdefault(
-        filename, {"stage": "queued", "error": None, "warnings": []}
-    )
-    entry["warnings"].append(text)
+    entry = processing_status.get(filename)
+
+    # a deleted PDF has no status any more: do not bring it back
+    if entry is not None:
+        entry["warnings"].append(text)
 
 
 def purge_index(name):
@@ -206,8 +211,8 @@ def finish_deferred_delete(file_path):
         print(f"Still cannot delete {file_path.name}: {e}")
 
 
-def run_pipeline(file_path, name, job):
-    total = perf_counter()
+def run_text_stages(file_path, name, job):
+    """Text -> summary -> tables. Returns False if the PDF could not be read."""
 
     # 1. Text first: it answers most questions
     begin_stage(name, job, "text")
@@ -219,19 +224,10 @@ def run_pipeline(file_path, name, job):
         print(f"Text ingestion failed for {name}: {e}")
         if job_is_current(name, job):
             set_status(name, "error", error=f"Reading the text failed: {e}")
-        return
+        return False
 
-    # 2. Tables
-    begin_stage(name, job, "tables")
-    t = perf_counter()
-    try:
-        ingest_pdf_tables(file_path)
-        print(f"table ingestion: {perf_counter() - t:.1f}s")
-    except Exception as e:
-        print(f"Table ingestion failed for {name}: {e}")
-        add_warning(name, "tables skipped")
-
-    # 3. Summary + suggested questions (uses the already-loaded answer model)
+    # 2. Summary + suggested questions, right after the text so the card
+    #    appears as early as possible
     begin_stage(name, job, "summary")
     t = perf_counter()
     try:
@@ -242,11 +238,25 @@ def run_pipeline(file_path, name, job):
             summaries[name] = result
             save_summaries()
 
-        print(f"summary: {perf_counter() - t:.1f}s")
+        print(f"summary: {perf_counter() - t:.1f}s ({'ok' if result else 'none'})")
     except Exception as e:
         print(f"Summary skipped for {name}: {e}")
 
-    # 4. Images (slowest). Stops between images if the PDF is deleted.
+    # 3. Tables
+    begin_stage(name, job, "tables")
+    t = perf_counter()
+    try:
+        ingest_pdf_tables(file_path)
+        print(f"table ingestion: {perf_counter() - t:.1f}s")
+    except Exception as e:
+        print(f"Table ingestion failed for {name}: {e}")
+        add_warning(name, "tables skipped")
+
+    return True
+
+
+def run_image_stage(file_path, name, job):
+    """Slowest part. Stops between images if the PDF is deleted."""
     begin_stage(name, job, "images")
     t = perf_counter()
 
@@ -269,27 +279,42 @@ def run_pipeline(file_path, name, job):
         raise JobCancelled()
 
     set_status(name, "done")
-    print(f"All done for {name} in {perf_counter() - total:.0f}s")
+    print(f"All done for {name}")
+
+
+def cleanup_cancelled(file_path, name):
+    # A newer upload of the same PDF exists: it clears the old data itself
+    if name in jobs:
+        return
+
+    purge_index(name)
+    processing_status.pop(name, None)
+    finish_deferred_delete(file_path)
 
 
 def process_pdf(file_path: Path, job: str):
-    """Runs in the background: text, tables, summary, then images."""
+    """Runs in the background: text, summary, tables, then images."""
 
     name = file_path.name
 
-    with processing_lock:
-        try:
-            run_pipeline(file_path, name, job)
+    try:
+        with processing_lock:
+            ready = run_text_stages(file_path, name, job)
 
-        except JobCancelled:
-            print(f"Indexing of {name} was cancelled, cleaning up")
+        if not ready:
+            return
 
-            purge_index(name)
+        # The document is usable now. Figures are analysed in the background
+        # and no longer hold up the next upload.
+        if image_lock.locked():
+            begin_stage(name, job, "images", detail="waiting for another PDF")
 
-            if name not in jobs:
-                processing_status.pop(name, None)
+        with image_lock:
+            run_image_stage(file_path, name, job)
 
-            finish_deferred_delete(file_path)
+    except JobCancelled:
+        print(f"Indexing of {name} was cancelled, cleaning up")
+        cleanup_cancelled(file_path, name)
 
 
 NO_PDF_MESSAGE = (
@@ -420,13 +445,53 @@ def get_summary(filename: str):
     if data:
         return {"ready": True, **data}
 
+    if not (UPLOAD_DIR / safe_name).exists() or safe_name in deferred_deletes:
+        return {"ready": False, "finished": True, "missing": True, "regenerating": False}
+
     stage = processing_status.get(safe_name, {}).get("stage")
+    regenerating = safe_name in summary_running
 
     return {
         "ready": False,
+        "regenerating": regenerating,
         # finished = no summary is coming (it failed, or was never requested)
-        "finished": stage not in SUMMARY_PENDING_STAGES
+        "finished": stage not in SUMMARY_PENDING_STAGES and not regenerating
     }
+
+
+def make_summary(file_path: Path):
+    name = file_path.name
+
+    try:
+        sample = sample_pdf_text(file_path)
+        result = generate_summary(sample) if sample else None
+
+        if result and file_path.exists() and name not in deferred_deletes:
+            summaries[name] = result
+            save_summaries()
+
+        print(f"summary retry for {name}: {'ok' if result else 'none'}")
+    except Exception as e:
+        print(f"Summary retry failed for {name}: {e}")
+    finally:
+        summary_running.discard(name)
+
+
+@app.post("/summary/{filename}/regenerate")
+def regenerate_summary(filename: str, background_tasks: BackgroundTasks):
+    """Try writing the summary again (used by the 'Try again' button)."""
+
+    safe_name = Path(filename).name
+    file_path = UPLOAD_DIR / safe_name
+
+    if not file_path.exists() or safe_name in deferred_deletes:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    if safe_name not in summary_running:
+        summary_running.add(safe_name)
+        background_tasks.add_task(make_summary, file_path)
+
+    return {"status": "started"}
 
 
 @app.delete("/documents/{filename}")

@@ -2082,3 +2082,27 @@ html[data-theme="light"] .code-block { background: #f6f6fb; }
     25% { transform: translateX(-6px); }
     75% { transform: translateX(6px); }
 }
+
+
+
+/* =====================================================================
+   DOCUMENT CARD BUTTONS
+   ===================================================================== */
+
+.document-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.summary-btn {
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: var(--purple-light);
+    background: hsl(var(--accent-hue) 100% 70% / 0.12);
+    border: 1px solid hsl(var(--accent-hue) 100% 70% / 0.4);
+}
+
+.summary-btn:hover { background: hsl(var(--accent-hue) 100% 70% / 0.26); }

@@ -6,21 +6,5 @@
       "How does ideal sampling create replicas of the original signal spectrum?",
       "What is the purpose of an antialiasing filter in signal reconstruction?"
     ]
-  },
-  "Lecture 14 Abstract classes.pdf": {
-    "summary": "This document explains abstract classes, their characteristics, and methods in object-oriented programming. It covers abstract methods, instantiation, and binding. Abstract classes are non-instantiable and provide a way to create classes that can only be inherited. The document also discusses static and dynamic binding.",
-    "questions": [
-      "What is an abstract method?",
-      "Can an abstract class be instantiated?",
-      "What is the difference between static and dynamic binding?"
-    ]
-  },
-  "Lecture 15 Interfaces.pdf": {
-    "summary": "This document explains the basics of interfaces in Java, including their properties, default methods, and nested interfaces. It covers key concepts such as abstract methods, reference types, and extending interfaces. The document provides a comprehensive overview of interfaces in Java programming.",
-    "questions": [
-      "What is an interface in Java?",
-      "Can an interface be instantiated?",
-      "How do interfaces extend other interfaces?"
-    ]
   }
 }

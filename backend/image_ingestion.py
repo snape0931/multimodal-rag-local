@@ -9,9 +9,12 @@ from backend.image_extractor import extract_images
 
 VISION_MODEL = "llava:7b"        # "moondream" is much faster on CPU (ollama pull moondream)
 MIN_SIZE = 200                   # px: skip icons and decorative fragments
-MAX_IMAGES = 12                   # max images described per PDF
+MAX_IMAGES = 8                   # max images described per PDF
 MAX_SIDE = 768                   # shrink images before sending them to the model
-MAX_DESCRIPTION_TOKENS = 200     # lower (e.g. 120) = faster, but vaguer diagram answers
+MAX_DESCRIPTION_TOKENS = 150     # lower = faster, but vaguer diagram answers
+VISION_TIMEOUT_SECONDS = 240     # a stuck model call is abandoned instead of hanging forever
+
+vision_client = ollama.Client(timeout=VISION_TIMEOUT_SECONDS)
 
 PROMPT = (
     "In 2-3 short sentences, describe this image. Say what kind of figure it is "
@@ -41,11 +44,18 @@ def to_small_jpeg(path):
         return buffer.getvalue()
 
 
-def ingest_pdf_images(pdf_path):
+def ingest_pdf_images(pdf_path, should_cancel=None, on_progress=None):
+    """
+    should_cancel: optional function returning True when the PDF was deleted
+    on_progress:   optional function(done, total) for the status line
+    """
 
     print(f"Starting image ingestion: {pdf_path}")
 
     extracted_images = extract_images(pdf_path)
+
+    if should_cancel and should_cancel():
+        return {"status": "cancelled"}
 
     # Remove old descriptions so a re-uploaded PDF never keeps stale ones
     try:
@@ -72,7 +82,14 @@ def ingest_pdf_images(pdf_path):
 
     indexed = 0
 
-    for image in selected:
+    for position, image in enumerate(selected, start=1):
+
+        if should_cancel and should_cancel():
+            print("Image ingestion cancelled")
+            break
+
+        if on_progress:
+            on_progress(position, len(selected))
 
         filename = image["filename"]
         image_id = f"image_{filename}"
@@ -89,7 +106,7 @@ def ingest_pdf_images(pdf_path):
         print(f"Generating description: {filename}")
 
         try:
-            response = ollama.chat(
+            response = vision_client.chat(
                 model=VISION_MODEL,
                 messages=[{
                     "role": "user",
@@ -115,6 +132,11 @@ def ingest_pdf_images(pdf_path):
                 show_progress_bar=False
             ).tolist()
 
+            # The PDF may have been deleted while the model was thinking
+            if should_cancel and should_cancel():
+                print("Image ingestion cancelled")
+                break
+
             # Save each image right away so a later failure loses nothing
             image_collection.upsert(
                 documents=[text],
@@ -136,7 +158,7 @@ def ingest_pdf_images(pdf_path):
 
     # Unload the vision model so it doesn't compete with the answer model
     try:
-        ollama.generate(model=VISION_MODEL, prompt="", keep_alive=0)
+        vision_client.generate(model=VISION_MODEL, prompt="", keep_alive=0)
     except Exception:
         pass
 

@@ -300,7 +300,20 @@ async function loadDocuments() {
                 deleteDocument(doc.filename, doc.status);
             });
 
-            card.append(info, deleteBtn);
+            const summaryBtn = document.createElement("button");
+            summaryBtn.className = "summary-btn";
+            summaryBtn.textContent = "✨ Summary";
+            summaryBtn.type = "button";
+
+            summaryBtn.addEventListener("click", () => {
+                showSummaryFor(doc.filename);
+            });
+
+            const actions = document.createElement("div");
+            actions.className = "document-actions";
+            actions.append(summaryBtn, deleteBtn);
+
+            card.append(info, actions);
             documentList.appendChild(card);
 
             // Document dropdown
@@ -317,6 +330,16 @@ async function loadDocuments() {
             data.documents.some(doc => doc.filename === previousSelection)
         ) {
             documentSelect.value = previousSelection;
+        }
+
+        // After a page reload, pick up indexing that is still running so the
+        // status line, the summary card and the celebration still appear
+        const running = data.documents.find(
+            doc => doc.status && !["done", "error"].includes(doc.status)
+        );
+
+        if (running && !statusTimer) {
+            pollStatus(running.filename);
         }
 
     } catch (error) {
@@ -400,7 +423,11 @@ function showSummaryCard(filename, data) {
         card.append(hint, chips);
     }
 
-    // Place the card just below the upload box
+    placeSummaryCard(card);
+}
+
+// Place the card just below the upload box
+function placeSummaryCard(card) {
     const parent = uploadStatus.parentElement;
     const anchor =
         (parent && parent.closest("[class*='upload'], [class*='drop']")) ||
@@ -408,6 +435,114 @@ function showSummaryCard(filename, data) {
         uploadStatus;
 
     anchor.insertAdjacentElement("afterend", card);
+}
+
+// Shown when no summary could be written, with a way to try again
+function showSummaryFailedCard(filename) {
+    removeSummaryCard();
+
+    const card = document.createElement("div");
+    card.className = "summary-card";
+
+    const title = document.createElement("h4");
+    title.textContent = `✨ About ${filename}`;
+
+    const text = document.createElement("p");
+    text.textContent =
+        "I couldn't write a summary for this PDF. If it is a scanned PDF it needs OCR; " +
+        "otherwise make sure Ollama is running, then try again.";
+
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "summary-chip";
+    retry.textContent = "↻ Try again";
+
+    retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        retry.textContent = "Writing summary...";
+
+        try {
+            await fetch(
+                `${API_URL}/summary/${encodeURIComponent(filename)}/regenerate`,
+                { method: "POST" }
+            );
+        } catch (error) {
+            console.error("Summary retry error:", error);
+        }
+
+        waitForRegeneratedSummary(filename);
+    });
+
+    card.append(title, text, retry);
+    placeSummaryCard(card);
+}
+
+// After "Try again": check every 2 s (up to about 2 minutes)
+async function waitForRegeneratedSummary(filename) {
+    for (let attempt = 0; attempt < 60; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        try {
+            const response = await fetch(
+                `${API_URL}/summary/${encodeURIComponent(filename)}`
+            );
+            const data = await response.json();
+
+            if (data.missing) return;
+
+            if (data.ready) {
+                showSummaryCard(filename, data);
+                return;
+            }
+
+            if (!data.regenerating) break;
+
+        } catch (error) {
+            // backend busy: keep waiting
+        }
+    }
+
+    showSummaryFailedCard(filename);
+}
+
+// "✨ Summary" button on a document card: show the summary any time
+async function showSummaryFor(filename) {
+    try {
+        const response = await fetch(
+            `${API_URL}/summary/${encodeURIComponent(filename)}`
+        );
+
+        if (!response.ok) throw new Error("Could not load the summary.");
+
+        const data = await response.json();
+
+        if (data.missing) {
+            uploadStatus.textContent = "That document no longer exists.";
+            return;
+        }
+
+        if (data.ready) {
+            showSummaryCard(filename, data);
+
+        } else if (data.finished && !data.regenerating) {
+            showSummaryFailedCard(filename);
+
+        } else {
+            uploadStatus.textContent =
+                "✨ The summary is still being written. It will appear here when it is ready.";
+
+            if (!statusTimer) pollStatus(filename);
+            return;
+        }
+
+        const card = document.querySelector(".summary-card");
+
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    } catch (error) {
+        uploadStatus.textContent = error.message;
+        console.error("Summary error:", error);
+    }
 }
 
 // Returns true once there is nothing more to wait for (shown, failed, or not coming)
@@ -420,12 +555,19 @@ async function checkSummary(filename) {
 
     const data = await response.json();
 
+    if (data.missing) return true;
+
     if (data.ready) {
         showSummaryCard(filename, data);
         return true;
     }
 
-    return Boolean(data.finished);
+    if (data.finished && !data.regenerating) {
+        showSummaryFailedCard(filename);
+        return true;
+    }
+
+    return false;
 }
 
 function pollStatus(filename) {
@@ -455,11 +597,24 @@ function pollStatus(filename) {
 
             const info = await response.json();
 
+            // A problem with the summary card must never block the status line
             if (!summaryDone) {
-                summaryDone = await checkSummary(filename);
+                try {
+                    summaryDone = await checkSummary(filename);
+                } catch (error) {
+                    console.error("Summary check failed:", error);
+                }
             }
 
+            // Text and summary are finished: the document can be used now
+            const usable = ["tables", "images", "done"].includes(info.stage);
             let finished = false;
+
+            if (usable && !celebrated) {
+                celebrated = true;
+                setProcessing(false);
+                launchConfetti();
+            }
 
             if (info.stage === "done") {
                 let message = `✅ ${filename} is fully indexed and ready.`;
@@ -470,23 +625,18 @@ function pollStatus(filename) {
 
                 uploadStatus.textContent = message;
                 finished = true;
-                setProcessing(false);
-
-                if (!celebrated) {
-                    celebrated = true;
-                    launchConfetti();
-                }
 
             } else if (info.stage === "error") {
                 uploadStatus.textContent = `❌ ${info.error || "Indexing failed."}`;
                 finished = true;
                 setProcessing(false);
 
-            } else if (
-                info.stage === "tables" ||
-                info.stage === "summary" ||
-                info.stage === "images"
-            ) {
+            } else if (usable) {
+                uploadStatus.textContent =
+                    `✅ ${filename} is ready, you can start asking questions. ` +
+                    `Still working in the background: ${info.label}`;
+
+            } else if (info.stage === "summary") {
                 uploadStatus.textContent =
                     `${info.label} Text is ready, so you can already start asking questions.`;
 
@@ -504,10 +654,12 @@ function pollStatus(filename) {
     }, 2000);
 }
 
+
 uploadBtn.addEventListener("click", () => {
     pdfInput.click();
 });
 
+// One function for the "Choose PDF" button AND drag & drop
 async function uploadFile(file) {
     if (!file) return;
 
