@@ -34,6 +34,7 @@ from backend.generation import (
     NOT_FOUND_MESSAGE
 )
 from backend.broad_queries import plan_special_query
+from backend.quiz import quiz_events
 from backend.ingestion import ingest_pdf_text
 from backend.table_ingestion import ingest_pdf_tables
 from backend.image_ingestion import ingest_pdf_images
@@ -325,6 +326,12 @@ def unique_sources(sources):
 class ChatTurn(BaseModel):
     role: str
     content: str
+
+
+class QuizRequest(BaseModel):
+    document: str
+    count: int = 5                   # 3 to 10
+    difficulty: str = "medium"       # easy | medium | hard
 
 
 class QuestionRequest(BaseModel):
@@ -729,6 +736,35 @@ def ask_stream(request: QuestionRequest):
                 "type": "error",
                 "text": f"Answer generation failed: {str(e)}"
             })
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+
+@app.post("/quiz_stream")
+def quiz_stream(request: QuizRequest):
+    """Streams quiz questions (one JSON object per line) as they are written."""
+
+    document = Path(request.document).name
+
+    if not (UPLOAD_DIR / document).exists() or document in deferred_deletes:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    count = max(3, min(request.count, 10))
+    difficulty = (
+        request.difficulty
+        if request.difficulty in ("easy", "medium", "hard")
+        else "medium"
+    )
+
+    def generate():
+        try:
+            for item in quiz_events(document, count, difficulty):
+                yield json.dumps(item, ensure_ascii=False) + "\n"
+        except Exception as e:
+            print(f"Quiz generation failed: {e}")
+            yield json.dumps(
+                {"type": "error", "text": "The quiz could not be generated. Is Ollama running?"}
+            ) + "\n"
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 

@@ -14,5 +14,13 @@
       "Can an abstract class be instantiated?",
       "What is the difference between static and dynamic binding?"
     ]
+  },
+  "Lecture 15 Interfaces.pdf": {
+    "summary": "This document explains the basics of interfaces in Java, including their properties, default methods, and nested interfaces. It covers key concepts such as abstract methods, reference types, and extending interfaces. The document provides a comprehensive overview of interfaces in Java programming.",
+    "questions": [
+      "What is an interface in Java?",
+      "Can an interface be instantiated?",
+      "How do interfaces extend other interfaces?"
+    ]
   }
 }

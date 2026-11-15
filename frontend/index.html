@@ -328,9 +328,7 @@
 
                 <div class="eyebrow" id="chatEyebrow">INTELLIGENT DOCUMENT SEARCH</div>
 
-                <h1>
-                    Ask <span>anything.</span>
-                </h1>
+                <h1 id="chatTitle">Ask <span>anything.</span></h1>
 
                 <p id="chatSubtitle">
                     Your documents hold the answers. Let's find them.
@@ -339,6 +337,7 @@
                 <div class="mode-switch" id="modeSwitch" role="tablist" aria-label="Assistant mode">
                     <button type="button" role="tab" data-mode="pdf" class="active" aria-selected="true">📄 PDF Analyzer</button>
                     <button type="button" role="tab" data-mode="chat" aria-selected="false">💬 Chatbot</button>
+                    <button type="button" role="tab" data-mode="quiz" aria-selected="false">🎯 Quiz Me</button>
                 </div>
 
                 <small class="mode-note" id="modeNote">PDF Analyzer answers only from the PDFs you upload.</small>
@@ -369,6 +368,84 @@
                         <button id="splitBtn" class="msg-action-btn" type="button"
                                 title="Show the PDF next to the chat">📖 Split view</button>
 
+                    </div>
+
+                </div>
+
+
+                <!-- QUIZ ME PANEL -->
+                <div id="quizPanel" class="quiz-panel" hidden>
+
+                    <!-- 1. setup -->
+                    <div id="quizSetup" class="quiz-step">
+                        <div class="quiz-hero-icon">🎯</div>
+                        <h3>Quiz me</h3>
+                        <p>I'll write multiple-choice questions from one of your PDFs and keep your score.</p>
+
+                        <label class="quiz-label" for="quizDocument">Document</label>
+                        <select id="quizDocument"></select>
+
+                        <div class="quiz-label">Questions</div>
+                        <div class="quiz-choice" id="quizCount" data-value="5">
+                            <button type="button" data-value="5" class="active">5</button>
+                            <button type="button" data-value="10">10</button>
+                        </div>
+
+                        <div class="quiz-label">Difficulty</div>
+                        <div class="quiz-choice" id="quizDifficulty" data-value="medium">
+                            <button type="button" data-value="easy">Easy</button>
+                            <button type="button" data-value="medium" class="active">Medium</button>
+                            <button type="button" data-value="hard">Hard</button>
+                        </div>
+
+                        <button id="quizStart" class="primary-btn" type="button">Start quiz <span>→</span></button>
+                        <p id="quizBest" class="quiz-best"></p>
+                        <p id="quizSetupNote" class="quiz-note"></p>
+                    </div>
+
+                    <!-- 2. playing -->
+                    <div id="quizPlay" class="quiz-step" hidden>
+                        <div class="quiz-top">
+                            <span id="quizProgressText">Question 1 of 5</span>
+                            <span id="quizScoreText">Score 0</span>
+                        </div>
+                        <div class="quiz-bar"><div id="quizBarFill"></div></div>
+
+                        <div id="quizLoading" class="quiz-loading">
+                            <div class="skeleton skeleton-line"></div>
+                            <div class="skeleton skeleton-line short"></div>
+                            <div class="skeleton quiz-skeleton-option"></div>
+                            <div class="skeleton quiz-skeleton-option"></div>
+                            <p id="quizLoadingText">Writing your first question...</p>
+                        </div>
+
+                        <div id="quizCard" hidden>
+                            <h3 id="quizQuestion"></h3>
+                            <div id="quizOptions" class="quiz-options"></div>
+
+                            <div id="quizFeedback" class="quiz-feedback" hidden>
+                                <div id="quizVerdict"></div>
+                                <p id="quizExplanation"></p>
+                                <button id="quizViewPage" class="msg-action-btn" type="button">📄 View page</button>
+                            </div>
+
+                            <div class="quiz-actions">
+                                <button id="quizQuit" class="msg-action-btn" type="button">End quiz</button>
+                                <button id="quizNext" class="primary-btn" type="button" hidden>Next →</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. results -->
+                    <div id="quizResults" class="quiz-step" hidden>
+                        <div class="quiz-ring" id="quizRing"><span id="quizRingText">0%</span></div>
+                        <h3 id="quizResultTitle">Nice work!</h3>
+                        <p id="quizResultText"></p>
+                        <div id="quizMissed" class="quiz-missed"></div>
+                        <div class="quiz-actions">
+                            <button id="quizRetryMissed" class="msg-action-btn" type="button">↻ Retry missed</button>
+                            <button id="quizNew" class="primary-btn" type="button">New quiz</button>
+                        </div>
                     </div>
 
                 </div>

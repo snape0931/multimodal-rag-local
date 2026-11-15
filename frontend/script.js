@@ -839,7 +839,7 @@ newChatBtn.addEventListener("click", () => {
     }
 
     chatHistory.length = 0;
-    chatMessages.innerHTML = welcomeHTML(currentMode);
+    chatMessages.innerHTML = welcomeHTML(chatMode);
     questionInput.value = "";
     questionInput.focus();
 });
@@ -1081,6 +1081,7 @@ refreshBtn.addEventListener("click", loadDocuments);
 // =====================================
 
 const modeSwitch = document.getElementById("modeSwitch");
+const chatTitle = document.getElementById("chatTitle");
 const chatEyebrow = document.getElementById("chatEyebrow");
 const chatSubtitle = document.getElementById("chatSubtitle");
 const modeNote = document.getElementById("modeNote");
@@ -1090,6 +1091,8 @@ const CHAT_HISTORY_MESSAGES = 10;
 
 const MODE_TEXT = {
     pdf: {
+        titleLead: "Ask",
+        titleAccent: "anything.",
         eyebrow: "INTELLIGENT DOCUMENT SEARCH",
         subtitle: "Your documents hold the answers. Let's find them.",
         note: "PDF Analyzer answers only from the PDFs you upload.",
@@ -1097,11 +1100,22 @@ const MODE_TEXT = {
         placeholder: "Ask a question about your documents..."
     },
     chat: {
+        titleLead: "Ask",
+        titleAccent: "anything.",
         eyebrow: "GENERAL ASSISTANT",
         subtitle: "Ask me anything: study doubts, coding, maths, writing.",
         note: "Chatbot mode doesn't use your PDFs. Switch to PDF Analyzer to ask about them.",
         toolbar: "GENERAL CHAT",
         placeholder: "Ask me anything..."
+    },
+    quiz: {
+        titleLead: "Quiz",
+        titleAccent: "me.",
+        eyebrow: "TEST YOURSELF",
+        subtitle: "Multiple-choice questions written from your own documents.",
+        note: "Quiz Me needs an uploaded PDF to write questions from.",
+        toolbar: "QUIZ",
+        placeholder: null
     }
 };
 
@@ -1125,7 +1139,8 @@ const modeState = {
     chat: { history: [], nodes: null }
 };
 
-let currentMode = "pdf";
+let currentMode = "pdf";   // "pdf" | "chat" | "quiz"
+let chatMode = "pdf";      // which conversation is loaded in the chat window
 
 function welcomeHTML(mode) {
     return mode === "chat" ? CHAT_WELCOME_HTML : initialChatHTML;
@@ -1135,6 +1150,7 @@ function updateModeUI() {
     const text = MODE_TEXT[currentMode];
 
     chatSection.classList.toggle("mode-chat", currentMode === "chat");
+    chatSection.classList.toggle("mode-quiz", currentMode === "quiz");
 
     modeSwitch.querySelectorAll("button[data-mode]").forEach(button => {
         const active = button.dataset.mode === currentMode;
@@ -1142,11 +1158,20 @@ function updateModeUI() {
         button.setAttribute("aria-selected", String(active));
     });
 
+    chatTitle.textContent = `${text.titleLead} `;
+
+    const accent = document.createElement("span");
+    accent.textContent = text.titleAccent;
+    chatTitle.appendChild(accent);
+
     chatEyebrow.textContent = text.eyebrow;
     chatSubtitle.textContent = text.subtitle;
     modeNote.textContent = text.note;
     toolbarLabelText.textContent = text.toolbar;
-    questionInput.placeholder = text.placeholder;
+
+    if (text.placeholder) questionInput.placeholder = text.placeholder;
+
+    quizPanel.hidden = currentMode !== "quiz";
 }
 
 function setMode(mode) {
@@ -1155,41 +1180,55 @@ function setMode(mode) {
     // Wait for a running answer instead of mixing two conversations
     if (askBtn.disabled) return;
 
-    // Park the current conversation (moving the nodes keeps their buttons working)
-    const saved = modeState[currentMode];
-    saved.history = chatHistory.slice();
+    if (currentMode === "quiz") leaveQuiz();
 
-    const parked = document.createDocumentFragment();
+    // Switching between the two chat modes swaps the conversation.
+    // Quiz Me leaves the chat untouched (it is only hidden).
+    if (mode !== "quiz" && mode !== chatMode) {
+        const saved = modeState[chatMode];
+        saved.history = chatHistory.slice();
 
-    while (chatMessages.firstChild) {
-        parked.appendChild(chatMessages.firstChild);
+        const parked = document.createDocumentFragment();
+
+        while (chatMessages.firstChild) {
+            parked.appendChild(chatMessages.firstChild);
+        }
+
+        saved.nodes = parked;
+
+        chatMode = mode;
+
+        const next = modeState[mode];
+
+        chatHistory.length = 0;
+        chatHistory.push(...next.history);
+
+        if (next.nodes && next.nodes.childNodes.length > 0) {
+            chatMessages.appendChild(next.nodes);
+        } else {
+            chatMessages.innerHTML = welcomeHTML(mode);
+        }
+
+        next.nodes = null;
     }
 
-    saved.nodes = parked;
-
-    // Bring back the other one
     currentMode = mode;
 
-    const next = modeState[mode];
-
-    chatHistory.length = 0;
-    chatHistory.push(...next.history);
-
-    if (next.nodes && next.nodes.childNodes.length > 0) {
-        chatMessages.appendChild(next.nodes);
-    } else {
-        chatMessages.innerHTML = welcomeHTML(mode);
-    }
-
-    next.nodes = null;
-
     if (mode === "chat" && splitOn) setSplit(false);
+
+    if (mode === "quiz") {
+        populateQuizDocuments();
+        showQuizStep("setup");
+    }
 
     localStorage.setItem("omnidoc-mode", mode);
 
     updateModeUI();
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    questionInput.focus();
+
+    if (mode !== "quiz") {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        questionInput.focus();
+    }
 }
 
 modeSwitch.addEventListener("click", event => {
@@ -1424,7 +1463,11 @@ let paletteReturnFocus = null;
 function askFromPalette(question, forcePdf = false) {
     showChat();
 
-    if (forcePdf) setMode("pdf");
+    if (forcePdf) {
+        setMode("pdf");
+    } else if (currentMode === "quiz") {
+        setMode(chatMode);
+    }
 
     questionInput.value = question;
     askQuestion();
@@ -1436,6 +1479,7 @@ function buildCommands() {
         { icon: "✧", title: "Go to Ask AI", hint: "Navigate", run: showChat },
         { icon: "📄", title: "Switch to PDF Analyzer mode", hint: "Mode", run: () => { showChat(); setMode("pdf"); } },
         { icon: "💬", title: "Switch to Chatbot mode", hint: "Mode", run: () => { showChat(); setMode("chat"); } },
+        { icon: "🎯", title: "Quiz me (multiple-choice questions)", hint: "Mode", run: () => { showChat(); setMode("quiz"); } },
         { icon: "＋", title: "New chat", hint: "Chat", run: () => { showChat(); newChatBtn.click(); } },
         { icon: "↑", title: "Upload a PDF", hint: "Documents", run: () => { showDashboard(); pdfInput.click(); } },
         { icon: "↻", title: "Refresh documents", hint: "Documents", run: loadDocuments },
@@ -1462,6 +1506,18 @@ function buildCommands() {
                     setMode("pdf");
                     documentSelect.value = option.value;
                     showPdfPage(option.value, 1);
+                }
+            });
+
+            commands.push({
+                icon: "🎯",
+                title: `Quiz me on ${option.value}`,
+                hint: "Quiz",
+                run: () => {
+                    showChat();
+                    setMode("quiz");
+                    quizDocument.value = option.value;
+                    updateBestLabel();
                 }
             });
 
@@ -1691,7 +1747,7 @@ function setProcessing(active) {
     if (pageFlip) pageFlip.hidden = !active;
 }
 
-function launchConfetti() {
+function launchConfetti(originEl = uploadCard) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const canvas = document.createElement("canvas");
@@ -1716,7 +1772,7 @@ function launchConfetti() {
     ];
 
     // Burst from the middle of the upload card (kept inside the screen)
-    const box = uploadCard.getBoundingClientRect();
+    const box = originEl.getBoundingClientRect();
     const originX = Math.min(Math.max(box.left + box.width / 2, 0), canvas.width);
     const originY = Math.min(Math.max(box.top + box.height / 2, 0), canvas.height);
 
@@ -1767,14 +1823,604 @@ function launchConfetti() {
 
 
 // =====================================
+// 17. QUIZ ME MODE
+// =====================================
+
+const quizPanel = document.getElementById("quizPanel");
+const quizSetup = document.getElementById("quizSetup");
+const quizPlay = document.getElementById("quizPlay");
+const quizResults = document.getElementById("quizResults");
+
+const quizDocument = document.getElementById("quizDocument");
+const quizCount = document.getElementById("quizCount");
+const quizDifficulty = document.getElementById("quizDifficulty");
+const quizStart = document.getElementById("quizStart");
+const quizBest = document.getElementById("quizBest");
+const quizSetupNote = document.getElementById("quizSetupNote");
+
+const quizProgressText = document.getElementById("quizProgressText");
+const quizScoreText = document.getElementById("quizScoreText");
+const quizBarFill = document.getElementById("quizBarFill");
+const quizLoading = document.getElementById("quizLoading");
+const quizLoadingText = document.getElementById("quizLoadingText");
+const quizCard = document.getElementById("quizCard");
+const quizQuestion = document.getElementById("quizQuestion");
+const quizOptions = document.getElementById("quizOptions");
+const quizFeedback = document.getElementById("quizFeedback");
+const quizVerdict = document.getElementById("quizVerdict");
+const quizExplanation = document.getElementById("quizExplanation");
+const quizViewPage = document.getElementById("quizViewPage");
+const quizQuit = document.getElementById("quizQuit");
+const quizNext = document.getElementById("quizNext");
+
+const quizRing = document.getElementById("quizRing");
+const quizRingText = document.getElementById("quizRingText");
+const quizResultTitle = document.getElementById("quizResultTitle");
+const quizResultText = document.getElementById("quizResultText");
+const quizMissed = document.getElementById("quizMissed");
+const quizRetryMissed = document.getElementById("quizRetryMissed");
+const quizNew = document.getElementById("quizNew");
+
+const QUIZ_BEST_KEY = "omnidoc-quiz-best";
+const QUIZ_LETTERS = "ABCD";
+
+const quiz = {
+    doc: null,
+    difficulty: "medium",
+    questions: [],     // questions received so far
+    answers: [],       // { question, picked, correct }
+    total: 5,          // how many questions this round will have
+    index: 0,
+    score: 0,
+    answered: false,
+    waiting: false,    // answered everything received, next one still being written
+    generating: false,
+    isRetry: false,
+    abort: null
+};
+
+function loadQuizBest() {
+    try {
+        return JSON.parse(localStorage.getItem(QUIZ_BEST_KEY)) || {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function saveQuizBest(doc, score, total, pct) {
+    const best = loadQuizBest();
+
+    if (!best[doc] || pct > best[doc].pct) {
+        best[doc] = { score, total, pct };
+
+        try {
+            localStorage.setItem(QUIZ_BEST_KEY, JSON.stringify(best));
+        } catch (error) {
+            console.warn("Could not save the best score:", error);
+        }
+    }
+}
+
+function updateBestLabel() {
+    const best = loadQuizBest()[quizDocument.value];
+
+    quizBest.textContent = best
+        ? `🏅 Your best on this document: ${best.score}/${best.total} (${best.pct}%)`
+        : "";
+}
+
+// Keeps the quiz's document list in sync with the uploaded PDFs
+function populateQuizDocuments() {
+    const previous = quizDocument.value;
+
+    const names = Array.from(documentSelect.options)
+        .map(option => option.value)
+        .filter(Boolean);
+
+    quizDocument.innerHTML = "";
+
+    names.forEach(name => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        quizDocument.appendChild(option);
+    });
+
+    if (names.includes(previous)) {
+        quizDocument.value = previous;
+    } else if (names.includes(documentSelect.value)) {
+        quizDocument.value = documentSelect.value;
+    }
+
+    quizStart.disabled = names.length === 0;
+
+    if (names.length === 0) {
+        quizSetupNote.textContent =
+            "Upload a PDF on the Documents page first. Quiz Me needs a document to write questions from.";
+    } else if (quizSetupNote.textContent.startsWith("Upload a PDF")) {
+        quizSetupNote.textContent = "";
+    }
+
+    updateBestLabel();
+}
+
+new MutationObserver(populateQuizDocuments)
+    .observe(documentSelect, { childList: true });
+
+quizDocument.addEventListener("change", updateBestLabel);
+
+[quizCount, quizDifficulty].forEach(group => {
+    group.addEventListener("click", event => {
+        const button = event.target.closest("button[data-value]");
+
+        if (!button) return;
+
+        group.dataset.value = button.dataset.value;
+
+        group.querySelectorAll("button").forEach(item => {
+            item.classList.toggle("active", item === button);
+        });
+    });
+});
+
+function showQuizStep(step) {
+    quizSetup.hidden = step !== "setup";
+    quizPlay.hidden = step !== "play";
+    quizResults.hidden = step !== "results";
+}
+
+function showQuizLoading(text) {
+    quizCard.hidden = true;
+    quizLoading.hidden = false;
+    quizLoadingText.textContent = text;
+}
+
+function updateQuizHeader() {
+    const shown = Math.min(quiz.index + 1, Math.max(quiz.total, 1));
+    quizProgressText.textContent = `Question ${shown} of ${quiz.total}`;
+}
+
+function quizFailed(message) {
+    quiz.generating = false;
+    quiz.waiting = false;
+
+    showQuizStep("setup");
+    quizSetupNote.textContent = `⚠️ ${message}`;
+}
+
+function shuffleQuestion(question) {
+    const correctText = question.options[question.answer];
+    const options = question.options.slice();
+
+    for (let i = options.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [options[i], options[j]] = [options[j], options[i]];
+    }
+
+    return { ...question, options, answer: options.indexOf(correctText) };
+}
+
+async function startQuiz() {
+    const doc = quizDocument.value;
+
+    if (!doc) return;
+
+    Object.assign(quiz, {
+        doc,
+        total: Number(quizCount.dataset.value),
+        difficulty: quizDifficulty.dataset.value,
+        questions: [],
+        answers: [],
+        index: 0,
+        score: 0,
+        answered: false,
+        waiting: false,
+        generating: true,
+        isRetry: false
+    });
+
+    quizSetupNote.textContent = "";
+    quizScoreText.textContent = "Score 0";
+    quizBarFill.style.width = "0%";
+    updateQuizHeader();
+
+    showQuizStep("play");
+    showQuizLoading("Writing your first question...");
+
+    const controller = new AbortController();
+    quiz.abort = controller;
+
+    try {
+        const response = await fetch(`${API_URL}/quiz_stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+                document: doc,
+                count: quiz.total,
+                difficulty: quiz.difficulty
+            })
+        });
+
+        if (!response.ok) {
+            let detail = "Could not start the quiz.";
+
+            try {
+                detail = (await response.json()).detail || detail;
+            } catch (error) {
+                // keep the default message
+            }
+
+            throw new Error(detail);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { value, done } = await reader.read();
+
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (line.trim()) handleQuizEvent(JSON.parse(line));
+            }
+        }
+
+        if (buffer.trim()) handleQuizEvent(JSON.parse(buffer));
+
+        // The stream ended without a "done" message
+        if (quiz.abort === controller && quiz.generating) {
+            handleQuizEvent({ type: "done", count: quiz.questions.length });
+        }
+
+    } catch (error) {
+        if (error.name === "AbortError") return;
+
+        console.error("Quiz error:", error);
+
+        if (quiz.abort === controller) {
+            if (quiz.questions.length === 0) {
+                quizFailed(error.message || "The quiz could not be generated.");
+            } else {
+                handleQuizEvent({ type: "error", text: error.message });
+            }
+        }
+
+    } finally {
+        if (quiz.abort === controller) quiz.abort = null;
+    }
+}
+
+function handleQuizEvent(event) {
+    if (event.type === "question") {
+        quiz.questions.push(event);
+
+        if (quiz.questions.length === 1) {
+            showQuestion(0);
+        } else if (quiz.waiting && quiz.index < quiz.questions.length) {
+            quiz.waiting = false;
+            showQuestion(quiz.index);
+        }
+
+    } else if (event.type === "done" || event.type === "error") {
+        quiz.generating = false;
+
+        if (quiz.questions.length === 0) {
+            quizFailed(
+                event.text ||
+                "I couldn't write questions from this document. It may have too little readable text."
+            );
+            return;
+        }
+
+        quiz.total = quiz.questions.length;
+        updateQuizHeader();
+
+        if (quiz.waiting) {
+            quiz.waiting = false;
+            finishQuiz();
+        }
+    }
+}
+
+function showQuestion(index) {
+    const question = quiz.questions[index];
+
+    quiz.index = index;
+    quiz.answered = false;
+
+    updateQuizHeader();
+    quizBarFill.style.width = `${(index / quiz.total) * 100}%`;
+
+    quizLoading.hidden = true;
+    quizCard.hidden = false;
+
+    // replay the slide-in animation
+    quizCard.style.animation = "none";
+    void quizCard.offsetWidth;
+    quizCard.style.animation = "";
+
+    quizQuestion.textContent = question.question;
+    quizOptions.innerHTML = "";
+
+    question.options.forEach((text, position) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "quiz-option";
+
+        const letter = document.createElement("span");
+        letter.className = "quiz-letter";
+        letter.textContent = QUIZ_LETTERS[position];
+
+        const label = document.createElement("span");
+        label.textContent = text;
+
+        button.append(letter, label);
+        button.addEventListener("click", () => answerQuiz(position));
+
+        quizOptions.appendChild(button);
+    });
+
+    quizFeedback.hidden = true;
+    quizNext.hidden = true;
+}
+
+function answerQuiz(picked) {
+    if (quiz.answered) return;
+
+    quiz.answered = true;
+
+    const question = quiz.questions[quiz.index];
+    const correct = picked === question.answer;
+
+    if (correct) quiz.score += 1;
+
+    quiz.answers.push({ question, picked, correct });
+    quizScoreText.textContent = `Score ${quiz.score}`;
+
+    Array.from(quizOptions.children).forEach((button, position) => {
+        button.disabled = true;
+
+        if (position === question.answer) {
+            button.classList.add("correct");
+        } else if (position === picked) {
+            button.classList.add("wrong");
+        } else {
+            button.classList.add("dim");
+        }
+    });
+
+    quizVerdict.textContent = correct
+        ? "✅ Correct!"
+        : `❌ Not quite. The answer is ${QUIZ_LETTERS[question.answer]}: ${question.options[question.answer]}`;
+    quizVerdict.className = correct ? "ok" : "bad";
+
+    quizExplanation.textContent = question.explanation || "";
+
+    quizViewPage.hidden = !question.page;
+    quizViewPage.textContent = `📄 View page ${question.page} in the PDF`;
+
+    quizFeedback.hidden = false;
+    quizBarFill.style.width = `${((quiz.index + 1) / quiz.total) * 100}%`;
+
+    const isLast = quiz.index + 1 >= quiz.questions.length && !quiz.generating;
+
+    quizNext.textContent = isLast ? "See results" : "Next →";
+    quizNext.hidden = false;
+    quizNext.focus();
+}
+
+function goNext() {
+    const next = quiz.index + 1;
+
+    if (next < quiz.questions.length) {
+        showQuestion(next);
+
+    } else if (quiz.generating) {
+        // The next question is still being written
+        quiz.index = next;
+        quiz.waiting = true;
+        showQuizLoading("Writing the next question...");
+
+    } else {
+        finishQuiz();
+    }
+}
+
+function animateRing(target) {
+    const startedAt = performance.now();
+    const DURATION = 800;
+
+    function step(now) {
+        const progress = Math.min(1, (now - startedAt) / DURATION);
+        const value = Math.round(target * progress);
+
+        quizRing.style.setProperty("--pct", value);
+        quizRingText.textContent = `${value}%`;
+
+        if (progress < 1) requestAnimationFrame(step);
+    }
+
+    requestAnimationFrame(step);
+}
+
+function finishQuiz() {
+    const answered = quiz.answers.length;
+
+    if (answered === 0) {
+        showQuizStep("setup");
+        return;
+    }
+
+    const pct = Math.round((quiz.score / answered) * 100);
+
+    showQuizStep("results");
+
+    if (pct >= 90) quizResultTitle.textContent = "Outstanding! 🏆";
+    else if (pct >= 70) quizResultTitle.textContent = "Great job! 🎉";
+    else if (pct >= 50) quizResultTitle.textContent = "Good effort 👍";
+    else quizResultTitle.textContent = "Keep practising 💪";
+
+    quizResultText.textContent =
+        `You got ${quiz.score} of ${answered} right on ${quiz.doc}.`;
+
+    animateRing(pct);
+
+    // Questions that were missed, with the right answer and the page
+    quizMissed.innerHTML = "";
+
+    const missed = quiz.answers.filter(item => !item.correct);
+
+    missed.forEach(item => {
+        const { question, picked } = item;
+
+        const card = document.createElement("div");
+        card.className = "quiz-missed-item";
+
+        const title = document.createElement("strong");
+        title.textContent = question.question;
+
+        const yours = document.createElement("div");
+        yours.className = "bad";
+        yours.textContent = `Your answer: ${question.options[picked]}`;
+
+        const right = document.createElement("div");
+        right.className = "ok";
+        right.textContent = `Correct answer: ${question.options[question.answer]}`;
+
+        card.append(title, yours, right);
+
+        if (question.page) {
+            const view = document.createElement("button");
+            view.type = "button";
+            view.className = "msg-action-btn";
+            view.textContent = `📄 View page ${question.page}`;
+            view.addEventListener("click", () =>
+                showPdfPage(question.source || quiz.doc, question.page)
+            );
+            card.appendChild(view);
+        }
+
+        quizMissed.appendChild(card);
+    });
+
+    quizRetryMissed.hidden = missed.length === 0;
+
+    if (!quiz.isRetry) {
+        saveQuizBest(quiz.doc, quiz.score, answered, pct);
+    }
+
+    if (pct >= 80) launchConfetti(quizRing);
+}
+
+function retryMissedQuestions() {
+    const missed = quiz.answers
+        .filter(item => !item.correct)
+        .map(item => shuffleQuestion(item.question));
+
+    if (missed.length === 0) return;
+
+    Object.assign(quiz, {
+        questions: missed,
+        answers: [],
+        total: missed.length,
+        index: 0,
+        score: 0,
+        answered: false,
+        waiting: false,
+        generating: false,
+        isRetry: true
+    });
+
+    quizScoreText.textContent = "Score 0";
+
+    showQuizStep("play");
+    showQuestion(0);
+}
+
+function leaveQuiz() {
+    if (quiz.abort) {
+        quiz.abort.abort();
+        quiz.abort = null;
+    }
+
+    quiz.generating = false;
+    quiz.waiting = false;
+
+    showQuizStep("setup");
+}
+
+quizStart.addEventListener("click", startQuiz);
+quizNext.addEventListener("click", goNext);
+
+quizQuit.addEventListener("click", () => {
+    if (quiz.abort) {
+        quiz.abort.abort();
+        quiz.abort = null;
+    }
+
+    quiz.generating = false;
+    quiz.waiting = false;
+
+    finishQuiz();
+});
+
+quizViewPage.addEventListener("click", () => {
+    const question = quiz.questions[quiz.index];
+
+    if (question && question.page) {
+        showPdfPage(question.source || quiz.doc, question.page);
+    }
+});
+
+quizRetryMissed.addEventListener("click", retryMissedQuestions);
+
+quizNew.addEventListener("click", () => {
+    showQuizStep("setup");
+    updateBestLabel();
+});
+
+// Keyboard: A-D or 1-4 to answer
+document.addEventListener("keydown", event => {
+    if (currentMode !== "quiz" || chatSection.classList.contains("hidden")) return;
+    if (!paletteBackdrop.hidden) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target.closest("input, textarea, select")) return;
+    if (quizPlay.hidden || quizCard.hidden || quiz.answered) return;
+
+    const key = event.key.toLowerCase();
+
+    let position = "1234".indexOf(key);
+
+    if (position === -1) position = "abcd".indexOf(key);
+
+    const question = quiz.questions[quiz.index];
+
+    if (position !== -1 && question && position < question.options.length) {
+        event.preventDefault();
+        answerQuiz(position);
+    }
+});
+
+
+// =====================================
 // 13. INITIALIZE APPLICATION
 // =====================================
 
 loadDocuments();
 
 // Restore the last used mode
-if (localStorage.getItem("omnidoc-mode") === "chat") {
-    setMode("chat");
+const savedMode = localStorage.getItem("omnidoc-mode");
+
+if (savedMode && savedMode !== "pdf") {
+    setMode(savedMode);
 } else {
     updateModeUI();
 }
